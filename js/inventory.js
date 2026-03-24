@@ -128,12 +128,14 @@ const Inventory = (() => {
         const inMv = serialInMovement[serial.toUpperCase()];
         rows.push({
           serial,
-          product:  v.product,
-          category: v.category,
-          location: v.location,
-          status:   'in-stock',
-          used:     inMv?.used === true,
-          cost:     DB.getSerialCost(serial),
+          product:   v.product,
+          category:  v.category,
+          location:  v.location,
+          status:    'in-stock',
+          condition: inMv?.condition || (inMv?.used ? 'used' : ''),  // backward compat
+          testedBy:  inMv?.testedBy  || '',
+          testedAt:  inMv?.testedAt  || '',
+          cost:      DB.getSerialCost(serial),
         });
       });
     });
@@ -292,7 +294,7 @@ const Inventory = (() => {
         type: 'IN',
         product: p.product, category: p.category, location,
         supplier: supplier || '', receivedBy: receivedBy || '',
-        used: receipt.used === true,
+        condition: receipt.condition || '',   // '', 'used', 'faulty', 'needs-testing'
         serials: [...p.serials],
         date: new Date().toISOString(),
       });
