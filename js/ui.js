@@ -24,8 +24,8 @@ const UI = (() => {
     document.getElementById('stats-row').innerHTML = `
       <div class="stat"><div class="stat-label">In stock</div><div class="stat-val green">${stats.inStock}</div></div>
       <div class="stat"><div class="stat-label">In transit</div><div class="stat-val transit">${stats.inTransit}</div></div>
+      <div class="stat"><div class="stat-label">Deployed</div><div class="stat-val deployed">${stats.deployed}</div></div>
       <div class="stat"><div class="stat-label">Total received</div><div class="stat-val">${stats.totalIn}</div></div>
-      <div class="stat"><div class="stat-label">Dispatched</div><div class="stat-val red">${stats.totalOut}</div></div>
       <div class="stat"><div class="stat-label">Product lines</div><div class="stat-val">${stats.productLines}</div></div>
       <div class="stat"><div class="stat-label">Low stock</div><div class="stat-val amber">${stats.lowCount}</div></div>`;
 
@@ -167,7 +167,59 @@ const UI = (() => {
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
 
-  // ── All Stock (individual serials) ────────────────────────────────────
+  // ── Stock Deployed ────────────────────────────────────────────────────
+  function renderDeployed() {
+    const search  = (document.getElementById('dep-search').value || '').toLowerCase();
+    const catF    = document.getElementById('dep-cat-filter').value;
+    const custF   = document.getElementById('dep-customer-filter').value;
+
+    let rows = Inventory.getDeployedSerialRows().filter(r => {
+      const ms = !search  || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.customer.toLowerCase().includes(search);
+      const mc = !catF    || r.category === catF;
+      const mcu= !custF   || r.customer === custF;
+      return ms && mc && mcu;
+    });
+
+    const totalCost    = rows.filter(r => r.cost != null).reduce((a, r) => a + r.cost, 0);
+    const costedCount  = rows.filter(r => r.cost != null).length;
+
+    const tbody = document.getElementById('dep-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No deployed stock found</div></td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(r => `<tr>
+        <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+        <td style="font-weight:500">${esc(r.product)}</td>
+        <td><span class="cat-badge">${esc(r.category || '—')}</span></td>
+        <td><strong>${esc(r.customer || '—')}</strong></td>
+        <td style="font-size:11px;color:var(--text-muted)">${esc(r.by || '—')}</td>
+        <td style="font-size:11px;color:var(--text-hint)">${fmtDateFull(r.date)}</td>
+        <td style="font-size:12px">${r.cost != null ? '$' + r.cost.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+      </tr>`).join('');
+    }
+
+    const footer = document.getElementById('dep-footer');
+    footer.textContent = rows.length
+      ? `${rows.length} unit${rows.length!==1?'s':''} deployed${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}`
+      : '';
+  }
+
+  function populateDeployedFilters() {
+    const customers = Inventory.getCustomers();
+    const sel = document.getElementById('dep-customer-filter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All customers</option>' + customers.map(c => `<option value="${esc(c)}"${c===cur?' selected':''}>${esc(c)}</option>`).join('');
+  }
+
+  function exportDeployedCSV() {
+    const rows = [['Serial Number','Product','Category','Customer / Account','Dispatched By','Date Deployed','Reference','Cost']];
+    Inventory.getDeployedSerialRows().forEach(r => {
+      rows.push([r.serial, r.product, r.category, r.customer, r.by, fmtDateFull(r.date), r.ref, r.cost != null ? r.cost : '']);
+    });
+    _dlCSV(rows, 'aio_stock_deployed.csv');
+  }
+
+  // ── Stock Deployed ────────────────────────────────────────────────────
   function renderStockList() {
     const search  = (document.getElementById('inv-search').value || '').toLowerCase();
     const catF    = document.getElementById('inv-cat-filter').value;
@@ -323,5 +375,5 @@ const UI = (() => {
   function fmtDate(iso)     { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
   function fmtDateFull(iso) { return new Date(iso).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
 
-  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
+  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
 })();
