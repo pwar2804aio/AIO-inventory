@@ -525,7 +525,7 @@
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
   }
 
-  document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.view)));
+  document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => showViewTracked(btn.dataset.view)));
 
   // ── Bindings ──────────────────────────────────────────────────────────
   function bind(id, ev, fn) { const el=document.getElementById(id); if(el) el.addEventListener(ev, fn); }
@@ -628,17 +628,6 @@
 
     // User is logged in — inject user bar into header
     AuthUI.injectUserBar();
-
-    // Re-wire nav buttons to tracked version
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      newBtn.addEventListener('click', () => showViewTracked(newBtn.dataset.view));
-    });
-
-    // Re-wire report buttons
-    bind('btn-rpt-run',    'click', () => { if (typeof Reports !== 'undefined') Reports.render(); });
-    bind('btn-rpt-export', 'click', () => { if (typeof Reports !== 'undefined') Reports.exportAll(); });
 
     // Wait for DB then render
     DB.onReady(() => {
