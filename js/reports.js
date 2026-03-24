@@ -274,23 +274,20 @@ const Reports = (() => {
 
     // ── Helper: inline bar rows ────────────────────────────────────────
     function barRows(items, labelKey, valueKey, color) {
+      if (!items.length) return '<div class="empty">No data</div>';
       const max = Math.max(...items.map(i => i[valueKey]), 1);
-      return items.map(item => `
+      return `<div class="rpt-bars-wrap">${items.map(item => `
         <div class="rpt-bar-row">
-          <div class="rpt-bar-label">${esc(item[labelKey])}</div>
-          <div class="rpt-bar-track"><div class="rpt-bar-fill ${color==='orange'?'orange':''}" style="width:${Math.round(item[valueKey]/max*100)}%"></div></div>
+          <div class="rpt-bar-label" title="${esc(item[labelKey])}">${esc(item[labelKey])}</div>
+          <div class="rpt-bar-track"><div class="rpt-bar-fill ${color==='orange'?'orange':''}" style="width:${Math.max(2, Math.round(item[valueKey]/max*100))}%"></div></div>
           <div class="rpt-bar-val">${fmt$(item[valueKey])}</div>
-        </div>`).join('');
+        </div>`).join('')}</div>`;
     }
 
     // ── Stock value by category ────────────────────────────────────────
     document.getElementById('rpt-by-category').innerHTML = `
       <div class="rpt-grid">
-        <div>
-          ${byCategory.length
-            ? barRows(byCategory, 'category', 'value', 'purple')
-            : '<div class="empty">No holding stock with costs</div>'}
-        </div>
+        ${barRows(byCategory, 'category', 'value', 'purple')}
         <div class="table-wrap">
           <table>
             <thead><tr><th>Category</th><th>Units</th><th>Priced</th><th>Total value</th><th>Avg / unit</th></tr></thead>
@@ -311,11 +308,7 @@ const Reports = (() => {
     // ── Stock value by product ─────────────────────────────────────────
     document.getElementById('rpt-by-product').innerHTML = `
       <div class="rpt-grid">
-        <div>
-          ${byProduct.length
-            ? barRows(byProduct, 'product', 'value', 'purple')
-            : '<div class="empty">No holding stock with costs</div>'}
-        </div>
+        ${barRows(byProduct, 'product', 'value', 'purple')}
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:32%">Product</th><th>Category</th><th>Units</th><th>Total value</th><th>Avg / unit</th></tr></thead>
@@ -336,11 +329,7 @@ const Reports = (() => {
     // ── Holding cost by location ───────────────────────────────────────
     document.getElementById('rpt-by-location').innerHTML = `
       <div class="rpt-grid">
-        <div>
-          ${byLocation.length
-            ? barRows(byLocation, 'location', 'value', 'purple')
-            : '<div class="empty">No location data</div>'}
-        </div>
+        ${barRows(byLocation, 'location', 'value', 'purple')}
         <div class="table-wrap">
           <table>
             <thead><tr><th>Location</th><th>Units</th><th>Priced</th><th>Total value</th></tr></thead>
@@ -380,11 +369,7 @@ const Reports = (() => {
     // ── Deployed cost by customer ──────────────────────────────────────
     document.getElementById('rpt-by-customer').innerHTML = `
       <div class="rpt-grid">
-        <div>
-          ${byCustomer.length
-            ? barRows(byCustomer, 'customer', 'value', 'orange')
-            : '<div class="empty">No deployed stock in range</div>'}
-        </div>
+        ${barRows(byCustomer, 'customer', 'value', 'orange')}
         <div class="table-wrap">
           <table>
             <thead><tr>
@@ -406,128 +391,6 @@ const Reports = (() => {
         </div>
       </div>`;
 
-    // ── Stock value by category — bar chart + table ──
-    const catLabels = byCategory.map(c => c.category);
-    const catValues = byCategory.map(c => c.value);
-    document.getElementById('rpt-by-category').innerHTML = `
-      <div class="rpt-section-grid">
-        <div>
-          <canvas id="chart-category" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Category</th><th>Units</th><th>Priced</th><th>Total value</th><th>Avg / unit</th></tr></thead>
-            <tbody>${byCategory.length ? byCategory.map(c => `<tr>
-              <td><span class="cat-badge">${esc(c.category)}</span></td>
-              <td>${c.units}</td>
-              <td style="color:var(--text-hint)">${c.costed}</td>
-              <td style="font-weight:600">${fmt$(c.value)}</td>
-              <td style="color:var(--text-muted)">${c.costed > 0 ? fmt$(c.value / c.costed) : '—'}</td>
-            </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No holding stock with costs</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>`;
-    setTimeout(() => drawBarChart('chart-category', catLabels, catValues, '#378add'), 0);
-
-    // ── Stock value by product — donut + table ──
-    const prodLabels = byProduct.map(p => p.product);
-    const prodValues = byProduct.map(p => p.value);
-    document.getElementById('rpt-by-product').innerHTML = `
-      <div class="rpt-section-grid">
-        <div>
-          <canvas id="chart-product" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th style="width:30%">Product</th><th>Category</th><th>Units</th><th>Total value</th><th>Avg / unit</th></tr></thead>
-            <tbody>${byProduct.length ? byProduct.map(p => `<tr>
-              <td style="font-weight:500">${esc(p.product)}</td>
-              <td><span class="cat-badge">${esc(p.category)}</span></td>
-              <td>${p.units}</td>
-              <td style="font-weight:600">${fmt$(p.value)}</td>
-              <td style="color:var(--text-muted)">${p.costed > 0 ? fmt$(p.value / p.costed) : '—'}</td>
-            </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No holding stock with costs</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>`;
-    setTimeout(() => drawDonutChart('chart-product', prodLabels, prodValues, CAT_COLORS), 0);
-
-    // ── Holding cost by location ──
-    const locLabels = byLocation.map(l => l.location);
-    const locValues = byLocation.map(l => l.value);
-    document.getElementById('rpt-by-location').innerHTML = `
-      <div class="rpt-section-grid">
-        <div>
-          <canvas id="chart-location" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Location</th><th>Units</th><th>Priced</th><th>Total value</th></tr></thead>
-            <tbody>${byLocation.length ? byLocation.map(l => `<tr>
-              <td><span class="loc-badge">${esc(l.location)}</span></td>
-              <td>${l.units}</td>
-              <td style="color:var(--text-hint)">${l.costed}</td>
-              <td style="font-weight:600">${fmt$(l.value)}</td>
-            </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No location data</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>`;
-    setTimeout(() => drawBarChart('chart-location', locLabels, locValues, '#3b6d11'), 0);
-
-    // ── Low stock items ──
-    document.getElementById('rpt-low-stock').innerHTML = lowStock.length
-      ? `<table>
-          <thead><tr>
-            <th style="width:26%">Product</th>
-            <th style="width:13%">Category</th>
-            <th style="width:15%">Location</th>
-            <th style="width:10%">In stock</th>
-            <th style="width:10%">Threshold</th>
-            <th style="width:12%">Shortfall</th>
-            <th style="width:14%">Status</th>
-          </tr></thead>
-          <tbody>${lowStock.map(item => `<tr>
-            <td style="font-weight:500">${esc(item.product)}</td>
-            <td><span class="cat-badge">${esc(item.category||'—')}</span></td>
-            <td><span class="loc-badge">${esc(item.location||'—')}</span></td>
-            <td style="font-weight:600;color:var(--${item.inStockCount===0?'danger':'warning'}-text)">${item.inStockCount}</td>
-            <td style="color:var(--text-muted)">${item.threshold}</td>
-            <td style="color:var(--danger-text)">${item.gap > 0 ? '+' + item.gap + ' needed' : 'At threshold'}</td>
-            <td><span class="badge ${item.inStockCount===0?'b-zero':'b-low'}">${item.inStockCount===0?'Out of stock':'Low stock'}</span></td>
-          </tr>`).join('')}</tbody>
-        </table>`
-      : '<div class="empty">No low stock items — all products above threshold</div>';
-
-    // ── Deployed cost by customer ──
-    const custLabels = byCustomer.map(c => c.customer);
-    const custValues = byCustomer.map(c => c.value);
-    document.getElementById('rpt-by-customer').innerHTML = `
-      <div class="rpt-section-grid">
-        <div>
-          <canvas id="chart-customer" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th style="width:28%">Customer / Account</th>
-              <th>Units</th>
-              <th>Products</th>
-              <th>Total value</th>
-              <th>First deploy</th>
-              <th>Last deploy</th>
-            </tr></thead>
-            <tbody>${byCustomer.length ? byCustomer.map(c => `<tr>
-              <td style="font-weight:500">${esc(c.customer)}</td>
-              <td>${c.units}</td>
-              <td style="color:var(--text-muted)">${c.products}</td>
-              <td style="font-weight:600">${fmt$(c.value)}</td>
-              <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.firstDate)}</td>
-              <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.lastDate)}</td>
-            </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No deployed stock in range</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>`;
-    setTimeout(() => drawDonutChart('chart-customer', custLabels, custValues, ['#a32d2d','#d85a5a','#f09595','#fcebeb','#854f0b','#ef9f27']), 0);
   }
 
   // ── CSV exports ───────────────────────────────────────────────────────
