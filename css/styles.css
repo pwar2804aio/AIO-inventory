@@ -481,3 +481,37 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   border-bottom: none;
   padding: 10px 10px;
 }
+
+/* ── Login screen ──────────────────────────────────────────────────────── */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--header-bg);
+}
+.login-card {
+  background: var(--bg);
+  border-radius: var(--r-lg);
+  padding: 2.5rem 2rem;
+  width: 380px;
+  max-width: 96vw;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+  border: 1px solid var(--border-md);
+}
+.login-logo { text-align: center; margin-bottom: 2rem; }
+.login-logo-img { height: 38px; width: auto; margin: 0 auto 8px; display: block; filter: invert(40%) sepia(60%) saturate(400%) hue-rotate(200deg); }
+.login-logo-label { font-size: 12px; font-weight: 600; color: var(--text-hint); text-transform: uppercase; letter-spacing: .1em; }
+.login-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); border-radius: var(--r-md); padding: 9px 12px; font-size: 13px; margin-bottom: 14px; }
+.login-btn { width: 100%; padding: 10px; font-size: 14px; font-weight: 600; }
+.login-footer { text-align: center; font-size: 11px; color: var(--text-hint); margin-top: 1.5rem; }
+
+/* ── User bar in header ────────────────────────────────────────────────── */
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.user-name { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); }
+.user-role { font-size: 11px; font-weight: 500; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 4px; }
