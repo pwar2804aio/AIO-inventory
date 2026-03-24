@@ -79,7 +79,41 @@ const UI = (() => {
         </table>`
       : '<div class="empty">No stock data yet</div>';
 
-    const recent = [...movements].reverse().slice(0, 8);
+    // ── Deployed stock by product ──────────────────────────────────────
+    const deployedByProduct  = Inventory.getDeployedByProduct();
+    const deployedGrandTotal = deployedByProduct.reduce((a, p) => a + p.totalCost, 0);
+    const deployedGrandUnits = deployedByProduct.reduce((a, p) => a + p.units, 0);
+
+    document.getElementById('dash-deployed-stock').innerHTML = deployedByProduct.length
+      ? `<table class="product-stock-table">
+          <thead><tr>
+            <th style="width:28%">Product</th>
+            <th style="width:16%">Category</th>
+            <th style="width:12%">Units deployed</th>
+            <th style="width:14%">Avg cost</th>
+            <th style="width:10%">Priced</th>
+            <th style="width:14%">Total value</th>
+          </tr></thead>
+          <tbody>
+            ${deployedByProduct.map(p => `<tr>
+              <td style="font-weight:500">${esc(p.product)}</td>
+              <td><span class="cat-badge">${esc(p.category || '—')}</span></td>
+              <td><span style="font-size:13px;font-weight:600;color:var(--aio-orange-dark)">${p.units}</span></td>
+              <td style="font-size:12px">${fmt$(p.avgCost)}</td>
+              <td style="font-size:12px;color:var(--text-muted)">${p.costedUnits > 0 ? p.costedUnits : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td style="font-size:12px;font-weight:600;color:var(--aio-orange-dark)">${fmt$(p.totalCost)}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="font-weight:700;font-size:12px;color:var(--text-muted)">Total</td>
+              <td style="font-weight:700;font-size:13px;color:var(--aio-orange-dark)">${deployedGrandUnits}</td>
+              <td colspan="2"></td>
+              <td style="font-weight:700;font-size:13px;color:var(--aio-orange-dark)">$${deployedGrandTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+            </tr>
+          </tfoot>
+        </table>`
+      : '<div class="empty">No stock deployed yet</div>';
     document.getElementById('dash-recent').innerHTML = recent.length
       ? `<table><thead><tr><th style="width:40%">Product</th><th style="width:13%">Type</th><th style="width:25%">Location</th><th style="width:22%">Date</th></tr></thead><tbody>
          ${recent.map(m => `<tr><td style="font-weight:500">${esc(m.product)}</td><td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td><td><span class="loc-badge">${esc(m.location||'—')}</span></td><td style="color:var(--text-hint)">${fmtDate(m.date)}</td></tr>`).join('')}
@@ -266,7 +300,10 @@ const UI = (() => {
         <td style="font-weight:500">${esc(r.product)}</td>
         <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
         <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
-        <td><span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span></td>
+        <td>
+          <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
+          ${r.used ? '<span class="badge b-used" style="margin-left:4px;">USED</span>' : ''}
+        </td>
         <td class="cost-cell" data-product="${esc(r.product)}" data-serial="${esc(r.serial)}" style="cursor:pointer;" title="Click to edit — updates all ${esc(r.product)} units">
           ${r.cost != null
             ? `<span class="cost-val">$${r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
