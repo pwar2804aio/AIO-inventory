@@ -229,7 +229,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','transit','in','out','stock-list','lookup','history'];
+  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -238,6 +238,7 @@
     if (view === 'dashboard')  UI.renderDashboard();
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
+    if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
     if (view === 'history')    UI.renderHistory();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        UI.populateDataLists();
@@ -256,7 +257,12 @@
   bind('btn-clear-out',         'click', clearStockOut);
   bind('btn-submit-out',        'click', submitStockOut);
   bind('btn-export-inv',        'click', UI.exportInventoryCSV);
+  bind('btn-export-deployed',   'click', UI.exportDeployedCSV);
   bind('btn-export-hist',       'click', UI.exportHistoryCSV);
+
+  bind('dep-search',         'input',  () => UI.renderDeployed());
+  bind('dep-cat-filter',     'change', () => UI.renderDeployed());
+  bind('dep-customer-filter','change', () => UI.renderDeployed());
   bind('btn-lookup',            'click', () => UI.renderLookup(document.getElementById('lookup-input').value));
 
   bind('inv-search',       'input',  () => UI.renderStockList());
