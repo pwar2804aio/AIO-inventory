@@ -285,10 +285,12 @@ const UI = (() => {
       const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
       const mc = !catF   || r.category === catF;
       const ml = !locF   || r.location === locF;
-      // Status filter handles both stock status and condition flags
+      // Status filter handles both stock status and condition/used flags
       let mst = true;
       if (statusF) {
-        if (statusF.startsWith('cond-')) {
+        if (statusF === 'cond-used') {
+          mst = r.used === true;
+        } else if (statusF.startsWith('cond-')) {
           mst = r.condition === statusF.replace('cond-', '');
         } else {
           mst = r.status === statusF;
@@ -327,6 +329,7 @@ const UI = (() => {
           <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
           <td>
             <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
+            ${r.used ? '<span class="badge b-used" style="margin-left:4px;">USED</span>' : ''}
             ${r.condition ? `<span class="badge b-condition b-cond-${r.condition}" style="margin-left:4px;">${_conditionLabel(r.condition)}</span>` : ''}
           </td>
           <td class="${isPOLocked ? 'cost-cell-locked' : 'cost-cell'}"
@@ -624,7 +627,7 @@ const UI = (() => {
 
     // Only show needs-testing, faulty, rma — NOT used
     const rows = Inventory.getAllSerialRows().filter(r => {
-      if (!r.condition || r.condition === 'used') return false;
+      if (!r.condition) return false; // only faulty, needs-testing, rma show in servicing
       const mf = !flagF  || r.condition === flagF;
       const ms = !search || r.serial.toLowerCase().includes(search)
                          || r.product.toLowerCase().includes(search)
