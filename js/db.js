@@ -37,6 +37,15 @@ const DB = (() => {
     // Serial costs: { [serial]: cost }
     setSerialCost(serial, cost) { _data.serialCosts[serial.toUpperCase()] = cost; _save(_data); },
     getSerialCost(serial)       { return _data.serialCosts[serial.toUpperCase()] ?? null; },
+    // Update cost for ALL serials belonging to a given product name
+    setProductCost(productName, cost, inventoryMap) {
+      Object.values(inventoryMap).forEach(v => {
+        if (v.product === productName) {
+          v.inStock.forEach(s => { _data.serialCosts[s.toUpperCase()] = cost; });
+        }
+      });
+      _save(_data);
+    },
     exportJSON()            { return JSON.stringify(_data, null, 2); },
     importJSON(str)         {
       const p = JSON.parse(str);
