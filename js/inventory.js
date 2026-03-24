@@ -1,7 +1,60 @@
 /**
  * inventory.js — business logic
  */
-const CATEGORIES = ['POS Device', 'Payment Device', 'Printer', 'Networking', 'Kiosks', 'Other'];
+const CATEGORIES = [
+  'Cash Drawer',
+  'Payment Terminal',
+  'Customer-Facing Display',
+  'POS Terminal',
+  'Kitchen Display System',
+  'Kitchen Printer',
+  'Receipt/Label Printer',
+  'Monitor Stand',
+  'Monitor Mount',
+  'Ceiling Mount',
+  'Wi-Fi Access Point',
+  'Gateway/Router',
+  'Mobile Router',
+  'LTE Failover',
+  'PoE Switch',
+  'Card Reader',
+  'Menu Board',
+  'Tablet',
+  'Tableside AI Device',
+  'MPOS',
+  'Kiosk',
+  'Kiosk Stand',
+  'Kiosk Mount',
+  'Other',
+];
+
+const PRODUCTS = [
+  { name: 'Volcora Auto Open Cash Drawer',         category: 'Cash Drawer' },
+  { name: 'Adyen AMS1',                            category: 'Payment Terminal' },
+  { name: 'Sunmi D3 Pro Separate Monitor',         category: 'Customer-Facing Display' },
+  { name: 'Sunmi D3 Pro Data Processing Machine',  category: 'POS Terminal' },
+  { name: 'Sunmi D2s KDS',                         category: 'Kitchen Display System' },
+  { name: 'Sunmi 80mm Kitchen Cloud Printer',      category: 'Kitchen Printer' },
+  { name: 'Epson TM-L90 Label Printer',            category: 'Receipt/Label Printer' },
+  { name: 'Wearson Adjustable LCD TV Stand',       category: 'Monitor Stand' },
+  { name: 'MOUNTUP Single Monitor Mount',          category: 'Monitor Mount' },
+  { name: 'WALI TV Ceiling Mount',                 category: 'Ceiling Mount' },
+  { name: 'Ubiquiti U7-Lite',                      category: 'Wi-Fi Access Point' },
+  { name: 'Ubiquiti Express 7 (UX7)',              category: 'Gateway/Router' },
+  { name: 'Ubiquiti UMR-Industrial',               category: 'Mobile Router' },
+  { name: 'Ubiquiti U-LTE-Backup Pro',             category: 'LTE Failover' },
+  { name: 'Ubiquiti Dream Router (UDR7)',           category: 'Gateway/Router' },
+  { name: 'Ubiquiti USW-Lite-8-PoE',              category: 'PoE Switch' },
+  { name: 'Adyen NYC1-SCR',                        category: 'Card Reader' },
+  { name: 'HK1 RBOX D8 Android TV Stick',         category: 'Menu Board' },
+  { name: 'Samsung Galaxy Tab A9',                 category: 'Tablet' },
+  { name: 'AIO Nugget (Tableside AI)',             category: 'Tableside AI Device' },
+  { name: 'Samsung Galaxy A14',                    category: 'MPOS' },
+  { name: 'AIO Kiosk',                             category: 'Kiosk' },
+  { name: 'AIO Kiosk Stand',                       category: 'Kiosk Stand' },
+  { name: 'Kiosk Adyen Mount',                     category: 'Kiosk Mount' },
+  { name: 'Other',                                 category: 'Other' },
+];
 
 const Inventory = (() => {
 
@@ -272,5 +325,5 @@ const Inventory = (() => {
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES };
+  return { getInventoryMap, getStockByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
 })();
