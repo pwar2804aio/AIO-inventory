@@ -115,22 +115,10 @@ const Scanner = (() => {
 
   function _onDetected(value) {
     if (!value) return;
-    const serial  = value.trim().toUpperCase();
-    const resEl   = document.getElementById('scanner-results');
-    const statusEl = document.getElementById('scanner-status');
-
-    if (resEl) resEl.innerHTML = `<div class="scanner-result-badge">${serial}</div>`;
-    if (statusEl) { statusEl.textContent = '✓ Got it!'; statusEl.style.color = 'var(--success-text)'; }
+    const serial = value.trim().toUpperCase();
     if (navigator.vibrate) navigator.vibrate(80);
     if (_onScan) _onScan(serial);
-
-    // Brief pause then clear result and keep scanning
-    setTimeout(() => {
-      if (resEl && document.body.contains(resEl)) {
-        resEl.innerHTML = '';
-        if (statusEl) { statusEl.textContent = 'Point at barcode · hold steady'; statusEl.style.color = 'var(--success-text)'; }
-      }
-    }, 1500);
+    _close();
   }
 
   async function _close() {
