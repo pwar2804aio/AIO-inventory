@@ -429,7 +429,34 @@ const Inventory = (() => {
     });
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────
+  // ── Stock Out (by product/quantity — no serial numbers) ──────────────
+  function stockOutByProduct(opts) {
+    const { customer, by, ref, items } = opts;
+    if (!customer) throw new Error('Customer / account is required.');
+    if (!items || items.length === 0) throw new Error('Select at least one product.');
+
+    const map = getInventoryMap();
+    const now = Date.now();
+    let i = 0;
+
+    items.forEach(({ product, location, qty }) => {
+      const key = product + '||' + location;
+      const v   = map[key];
+      if (!v) throw new Error(`Product "${product}" not found at ${location}`);
+      const available = [...v.inStock];
+      if (available.length < qty) throw new Error(`Only ${available.length} unit(s) of "${product}" available at ${location} — requested ${qty}`);
+
+      DB.addMovement({
+        id: now + (i++),
+        type: 'OUT',
+        product, category: v.category, location,
+        customer, by: by || '', ref: ref || '',
+        serials: available.slice(0, qty),  // take first N — serials may be blank/generated
+        qty,
+        date: new Date().toISOString(),
+      });
+    });
+  }
   function getLocations() { return [...new Set([...DB.getData().movements.map(m => m.location), ...DB.getData().shipments.map(s => s.location)].filter(Boolean))].sort(); }
   function getProducts()  { return [...new Set(DB.getData().movements.map(m => m.product))].sort(); }
   function getCustomers() { return [...new Set(DB.getData().movements.filter(m => m.customer).map(m => m.customer))].sort(); }
@@ -451,5 +478,5 @@ const Inventory = (() => {
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
+  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
 })();
