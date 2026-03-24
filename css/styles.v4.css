@@ -835,3 +835,9 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 .condition-flag-btn:has(input[value="used"]) input:checked + span {
   border-color: #d85050; background: #fceaea; color: #a32020;
 }
+
+/* ── RMA badge ────────────────────────────────────────────────────────── */
+.b-cond-rma { background: #1a0a0a; color: #ff6b6b; border: 1px solid #cc2222; font-weight: 700; }
+@media (prefers-color-scheme: light) {
+  .b-cond-rma { background: #fde8e8; color: #8b0000; border-color: #cc2222; }
+}
