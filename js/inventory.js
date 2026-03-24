@@ -74,6 +74,38 @@ const Inventory = (() => {
     return rows;
   }
 
+  // All individually deployed (dispatched) serial rows for Stock Deployed view
+  function getDeployedSerialRows() {
+    const rows = [];
+    const { movements } = DB.getData();
+    // Build a map: serial -> last OUT movement
+    const lastOut = {};
+    movements.forEach(mv => {
+      if (mv.type === 'OUT') {
+        mv.serials.forEach(s => {
+          lastOut[s] = { ...mv };
+        });
+      }
+    });
+    // Only include serials that are still dispatched (not re-received)
+    const availableSerials = getAvailableSerials();
+    Object.entries(lastOut).forEach(([serial, mv]) => {
+      if (!availableSerials.has(serial)) {
+        rows.push({
+          serial,
+          product:    mv.product,
+          category:   mv.category || '',
+          customer:   mv.customer || '',
+          by:         mv.by || '',
+          ref:        mv.ref || '',
+          date:       mv.date,
+          cost:       DB.getSerialCost(serial),
+        });
+      }
+    });
+    return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
   function getAvailableSerials() {
     const s = new Set();
     Object.values(getInventoryMap()).forEach(v => v.inStock.forEach(x => s.add(x)));
@@ -233,11 +265,12 @@ const Inventory = (() => {
       totalOut:     movements.filter(m => m.type === 'OUT').reduce((a, m) => a + m.serials.length, 0),
       inStock:      items.reduce((a, v) => a + v.inStock.size, 0),
       inTransit:    inTransitCount,
+      deployed:     getDeployedSerialRows().length,
       productLines: items.length,
       locations:    new Set(items.map(v => v.location).filter(Boolean)).size,
       lowCount:     getLowStockItems().length,
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getAllSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES };
+  return { getInventoryMap, getStockByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES };
 })();
