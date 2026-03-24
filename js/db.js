@@ -108,9 +108,14 @@ const DB = (() => {
     const s = serial.toUpperCase();
     _data.movements = _data.movements.map(mv => {
       if (mv.type === 'IN' && mv.serials.some(x => x.toUpperCase() === s)) {
+        // Never remove 'used' — if item was used and we're clearing a test flag, keep used
+        const prevCondition = mv.condition || '';
+        const finalCondition = condition === ''
+          ? (prevCondition === 'used' ? 'used' : '')   // preserve used on pass
+          : condition;                                   // set rma or whatever is passed
         return {
           ...mv,
-          condition: condition,
+          condition: finalCondition,
           testedBy:  testedBy  || mv.testedBy  || '',
           testedAt:  testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? '' : (mv.testedAt || new Date().toISOString())),
           testNotes: notes !== undefined ? notes : (mv.testNotes || ''),
