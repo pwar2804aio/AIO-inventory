@@ -275,3 +275,152 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 .lookup-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 12px; margin-top: 10px; }
 .lookup-meta-label { font-size: 10px; color: var(--aio-purple); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; font-weight: 700; }
 .lookup-not-found { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); border-radius: var(--r-md); padding: 12px 16px; font-size: 13px; }
+
+/* ── Reports ──────────────────────────────────────────────────────────── */
+.rpt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+.rpt-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rpt-date-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-lg);
+  padding: 8px 12px;
+  box-shadow: var(--shadow);
+}
+
+/* Summary KPI cards row */
+.rpt-cards-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+.rpt-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.rpt-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.rpt-card.purple::before { background: var(--aio-purple); }
+.rpt-card.orange::before { background: var(--aio-orange); }
+.rpt-card.green::before  { background: var(--success-border); }
+.rpt-card.amber::before  { background: var(--warning-border); }
+.rpt-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-hint);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+}
+.rpt-card-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+}
+.rpt-card-sub {
+  font-size: 11px;
+  color: var(--text-hint);
+  margin-top: 4px;
+}
+.rpt-card.purple .rpt-card-val { color: var(--aio-purple); }
+.rpt-card.orange .rpt-card-val { color: var(--aio-orange-dark); }
+.rpt-card.green  .rpt-card-val { color: var(--success-text); }
+.rpt-card.amber  .rpt-card-val { color: var(--warning-text); }
+
+/* Each report panel */
+.rpt-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.rpt-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--aio-purple-light);
+}
+.rpt-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--aio-purple-deep);
+}
+.rpt-panel-sub {
+  font-size: 11px;
+  color: var(--aio-purple);
+  margin-top: 2px;
+}
+.rpt-panel-body {
+  padding: 1.25rem;
+}
+
+/* Side-by-side chart + table */
+.rpt-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 780px) {
+  .rpt-grid { grid-template-columns: 1fr; }
+}
+.rpt-canvas-wrap {
+  background: var(--bg-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.rpt-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  border-radius: var(--r-sm);
+}
+
+/* Inline bar used for category/value visualisation */
+.rpt-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.rpt-bar-row:last-child { border-bottom: none; }
+.rpt-bar-label { font-size: 12px; font-weight: 500; min-width: 130px; }
+.rpt-bar-track { flex: 1; height: 8px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
+.rpt-bar-fill  { height: 100%; border-radius: 4px; background: var(--aio-purple); transition: width .4s ease; }
+.rpt-bar-fill.orange { background: var(--aio-orange); }
+.rpt-bar-val   { font-size: 12px; font-weight: 700; color: var(--aio-purple-deep); min-width: 70px; text-align: right; }
+
+/* rpt-desc span inside panel-title (old markup compat) */
+.rpt-desc { font-size: 10px; font-weight: 400; color: var(--aio-purple); text-transform: none; letter-spacing: 0; }
