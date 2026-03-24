@@ -557,7 +557,8 @@
 
   bind('svc-search',      'input',  () => UI.renderServicing());
   bind('svc-flag-filter', 'change', () => UI.renderServicing());
-  bind('rma-search',      'input',  () => UI.renderRMA());
+  bind('rma-search',        'input',  () => UI.renderRMA());
+  bind('rma-status-filter', 'change', () => UI.renderRMA());
 
   bind('hist-search',      'input',  () => UI.renderHistory());
   bind('hist-type-filter', 'change', () => UI.renderHistory());
