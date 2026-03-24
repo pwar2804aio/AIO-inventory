@@ -1,498 +1,579 @@
 /**
  * reports.js — AIO Inventory Reporting Suite
- * 6 reports: Stock Value, Value by Category, Category Breakdown,
- *            Product Breakdown, Low Stock, Deployed Cost
+ * All reports computed from DB + Inventory module.
  */
 const Reports = (() => {
 
   // ── Date helpers ──────────────────────────────────────────────────────
-  function parseDate(iso) { return new Date(iso); }
-  function fmtMoney(n)    { return '$' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-  function fmtNum(n)      { return (n||0).toLocaleString('en-US'); }
-  function esc(s)         { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function fmtDate(iso)   { return new Date(iso).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
-
-  function getDateRange() {
-    const from = document.getElementById('rpt-date-from').value;
-    const to   = document.getElementById('rpt-date-to').value;
-    return {
-      from: from ? new Date(from + 'T00:00:00') : null,
-      to:   to   ? new Date(to   + 'T23:59:59') : null,
-    };
-  }
-
-  function inRange(iso, range) {
-    if (!range.from && !range.to) return true;
-    const d = parseDate(iso);
-    if (range.from && d < range.from) return false;
-    if (range.to   && d > range.to)   return false;
+  function inRange(isoDate, from, to) {
+    if (!from && !to) return true;
+    const d = isoDate ? isoDate.slice(0, 10) : '';
+    if (from && d < from) return false;
+    if (to   && d > to)   return false;
     return true;
   }
 
-  // ── Core data builders ────────────────────────────────────────────────
-
-  /** All serials in stock with their costs, filtered by when they were received */
-  function getHoldingData(range) {
-    const { movements } = DB.getData();
-    const invMap = Inventory.getInventoryMap();
-    const rows = [];
-
-    Object.values(invMap).forEach(v => {
-      [...v.inStock].forEach(serial => {
-        // Find when this serial was received
-        const inMv = movements.find(m => m.type === 'IN' && m.serials.includes(serial));
-        if (range && inMv && !inRange(inMv.date, range)) return;
-        const cost = DB.getSerialCost(serial);
-        rows.push({
-          serial,
-          product:  v.product,
-          category: v.category,
-          location: v.location,
-          cost:     cost ?? null,
-          receivedDate: inMv ? inMv.date : null,
-        });
-      });
-    });
-    return rows;
+  function fmt$(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  /** All deployed serials with costs, filtered by dispatch date */
-  function getDeployedData(range) {
-    return Inventory.getDeployedSerialRows().filter(r => {
-      if (!range.from && !range.to) return true;
-      return inRange(r.date, range);
-    });
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Report 1: Total Stock Value ───────────────────────────────────────
-  function renderStockValue() {
-    const range = getDateRange();
-    const rows  = getHoldingData(range);
-    const priced   = rows.filter(r => r.cost != null);
-    const unpriced = rows.filter(r => r.cost == null);
-    const total    = priced.reduce((a, r) => a + r.cost, 0);
-    const avgCost  = priced.length ? total / priced.length : 0;
-
-    // By product
-    const byProduct = {};
-    rows.forEach(r => {
-      if (!byProduct[r.product]) byProduct[r.product] = { product: r.product, category: r.category, units: 0, costedUnits: 0, total: 0 };
-      byProduct[r.product].units++;
-      if (r.cost != null) { byProduct[r.product].costedUnits++; byProduct[r.product].total += r.cost; }
-    });
-    const productRows = Object.values(byProduct).sort((a, b) => b.total - a.total);
-    const maxTotal = Math.max(...productRows.map(r => r.total), 1);
-
-    document.getElementById('rpt-stock-value').innerHTML = `
-      <div class="rpt-summary-cards">
-        <div class="rpt-card rpt-card-green">
-          <div class="rpt-card-label">Total holding value</div>
-          <div class="rpt-card-val">${fmtMoney(total)}</div>
-          <div class="rpt-card-sub">${fmtNum(priced.length)} priced units</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Total units in stock</div>
-          <div class="rpt-card-val">${fmtNum(rows.length)}</div>
-          <div class="rpt-card-sub">${unpriced.length} without cost</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Average unit cost</div>
-          <div class="rpt-card-val">${fmtMoney(avgCost)}</div>
-          <div class="rpt-card-sub">across priced units</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Product lines</div>
-          <div class="rpt-card-val">${fmtNum(productRows.length)}</div>
-          <div class="rpt-card-sub">in holding</div>
-        </div>
-      </div>
-      <div class="rpt-chart-label">Value by product</div>
-      <div class="rpt-bar-chart">
-        ${productRows.map(r => `
-          <div class="rpt-bar-row">
-            <div class="rpt-bar-name" title="${esc(r.product)}">${esc(r.product)}</div>
-            <div class="rpt-bar-track">
-              <div class="rpt-bar-fill rpt-fill-green" style="width:${Math.max(2, Math.round(r.total / maxTotal * 100))}%"></div>
-            </div>
-            <div class="rpt-bar-val">${fmtMoney(r.total)} <span class="rpt-bar-units">${r.units}u</span></div>
-          </div>`).join('')}
-      </div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Product</th><th>Category</th><th>Units</th><th>Priced</th><th>Total value</th><th>Avg cost</th></tr></thead>
-          <tbody>${productRows.map(r => `<tr>
-            <td style="font-weight:500">${esc(r.product)}</td>
-            <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
-            <td>${fmtNum(r.units)}</td>
-            <td>${fmtNum(r.costedUnits)}</td>
-            <td style="font-weight:500;color:var(--success-text)">${fmtMoney(r.total)}</td>
-            <td>${r.costedUnits ? fmtMoney(r.total / r.costedUnits) : '—'}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>`;
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
   }
 
-  // ── Report 2: Stock Value by Category ────────────────────────────────
-  function renderValueByCategory() {
-    const range = getDateRange();
-    const rows  = getHoldingData(range);
-    const bycat = {};
-    rows.forEach(r => {
-      const k = r.category || 'Uncategorised';
-      if (!bycat[k]) bycat[k] = { category: k, units: 0, costedUnits: 0, total: 0 };
-      bycat[k].units++;
-      if (r.cost != null) { bycat[k].costedUnits++; bycat[k].total += r.cost; }
-    });
-    const catRows  = Object.values(bycat).sort((a, b) => b.total - a.total);
-    const grandTotal = catRows.reduce((a, r) => a + r.total, 0);
-    const maxTotal   = Math.max(...catRows.map(r => r.total), 1);
-    const COLOURS    = ['rpt-fill-blue','rpt-fill-green','rpt-fill-amber','rpt-fill-coral','rpt-fill-teal','rpt-fill-purple'];
+  // ── Data builders ─────────────────────────────────────────────────────
 
-    document.getElementById('rpt-value-category').innerHTML = `
-      <div class="rpt-summary-cards">
-        <div class="rpt-card rpt-card-green">
-          <div class="rpt-card-label">Grand total value</div>
-          <div class="rpt-card-val">${fmtMoney(grandTotal)}</div>
-          <div class="rpt-card-sub">${catRows.length} categories</div>
-        </div>
-        ${catRows.slice(0,3).map((r,i) => `
-        <div class="rpt-card">
-          <div class="rpt-card-label">${esc(r.category)}</div>
-          <div class="rpt-card-val">${fmtMoney(r.total)}</div>
-          <div class="rpt-card-sub">${fmtNum(r.units)} units · ${grandTotal ? Math.round(r.total/grandTotal*100) : 0}%</div>
-        </div>`).join('')}
-      </div>
-      <div class="rpt-chart-label">Value breakdown by category</div>
-      <div class="rpt-bar-chart">
-        ${catRows.map((r,i) => `
-          <div class="rpt-bar-row">
-            <div class="rpt-bar-name">${esc(r.category)}</div>
-            <div class="rpt-bar-track">
-              <div class="rpt-bar-fill ${COLOURS[i % COLOURS.length]}" style="width:${Math.max(2, Math.round(r.total / maxTotal * 100))}%"></div>
-            </div>
-            <div class="rpt-bar-val">${fmtMoney(r.total)} <span class="rpt-bar-units">${grandTotal ? Math.round(r.total/grandTotal*100) : 0}%</span></div>
-          </div>`).join('')}
-      </div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Category</th><th>Units</th><th>Priced units</th><th>Total value</th><th>% of total</th><th>Avg cost</th></tr></thead>
-          <tbody>${catRows.map(r => `<tr>
-            <td style="font-weight:500">${esc(r.category)}</td>
-            <td>${fmtNum(r.units)}</td>
-            <td>${fmtNum(r.costedUnits)}</td>
-            <td style="font-weight:500;color:var(--success-text)">${fmtMoney(r.total)}</td>
-            <td>${grandTotal ? Math.round(r.total/grandTotal*100) : 0}%</td>
-            <td>${r.costedUnits ? fmtMoney(r.total/r.costedUnits) : '—'}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>`;
-  }
+  /** Summary KPIs */
+  function buildSummary(from, to) {
+    const holdingRows = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
+    const deployedRows = Inventory.getDeployedSerialRows().filter(r => inRange(r.date, from, to));
+    const transitRows = Inventory.getAllSerialRows().filter(r => r.status === 'in-transit');
 
-  // ── Report 3: Category Breakdown ─────────────────────────────────────
-  function renderCategoryBreakdown() {
-    const range = getDateRange();
-    const allSerials = Inventory.getAllSerialRows();
-    const deployed   = Inventory.getDeployedSerialRows().filter(r => inRange(r.date, range));
-    const { shipments } = DB.getData();
+    const holdingValue  = holdingRows.reduce((a, r) => a + (r.cost ?? 0), 0);
+    const deployedValue = deployedRows.reduce((a, r) => a + (r.cost ?? 0), 0);
+    const transitValue  = transitRows.reduce((a, r) => a + (r.cost ?? 0), 0);
+    const holdingCosted = holdingRows.filter(r => r.cost != null).length;
+    const deployedCosted= deployedRows.filter(r => r.cost != null).length;
 
-    // Holding (in-stock only for this range)
-    const holding = getHoldingData(range);
-
-    const cats = {};
-    const addTo = (cat, field) => {
-      if (!cats[cat]) cats[cat] = { category: cat, holding: 0, inTransit: 0, deployed: 0 };
-      cats[cat][field]++;
+    return {
+      holdingUnits: holdingRows.length,
+      holdingValue,
+      holdingCosted,
+      deployedUnits: deployedRows.length,
+      deployedValue,
+      deployedCosted,
+      transitUnits: transitRows.length,
+      transitValue,
     };
-
-    holding.forEach(r => addTo(r.category || 'Uncategorised', 'holding'));
-    shipments.filter(s => s.status === 'in-transit').forEach(s => {
-      s.products.forEach(p => p.serials.forEach(() => addTo(p.category || 'Uncategorised', 'inTransit')));
-    });
-    deployed.forEach(r => addTo(r.category || 'Uncategorised', 'deployed'));
-
-    const catRows = Object.values(cats).sort((a, b) => (b.holding + b.deployed) - (a.holding + a.deployed));
-    const maxUnits = Math.max(...catRows.map(r => r.holding + r.inTransit + r.deployed), 1);
-
-    document.getElementById('rpt-category-breakdown').innerHTML = `
-      <div class="rpt-legend">
-        <span class="rpt-legend-dot rpt-fill-green"></span> Holding
-        <span class="rpt-legend-dot rpt-fill-amber" style="margin-left:12px"></span> In transit
-        <span class="rpt-legend-dot rpt-fill-coral" style="margin-left:12px"></span> Deployed
-      </div>
-      <div class="rpt-stacked-chart">
-        ${catRows.map(r => {
-          const total = r.holding + r.inTransit + r.deployed;
-          const hPct  = Math.round(r.holding    / maxUnits * 100);
-          const tPct  = Math.round(r.inTransit  / maxUnits * 100);
-          const dPct  = Math.round(r.deployed   / maxUnits * 100);
-          return `<div class="rpt-bar-row">
-            <div class="rpt-bar-name">${esc(r.category)}</div>
-            <div class="rpt-bar-track">
-              <div class="rpt-bar-fill rpt-fill-green"  style="width:${Math.max(hPct,0)}%;display:inline-block;position:relative;float:left" title="Holding: ${r.holding}"></div>
-              <div class="rpt-bar-fill rpt-fill-amber"  style="width:${Math.max(tPct,0)}%;display:inline-block;position:relative;float:left" title="In transit: ${r.inTransit}"></div>
-              <div class="rpt-bar-fill rpt-fill-coral"  style="width:${Math.max(dPct,0)}%;display:inline-block;position:relative;float:left" title="Deployed: ${r.deployed}"></div>
-            </div>
-            <div class="rpt-bar-val">${fmtNum(total)} <span class="rpt-bar-units">total</span></div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Category</th><th>In stock</th><th>In transit</th><th>Deployed</th><th>Total units</th></tr></thead>
-          <tbody>${catRows.map(r => `<tr>
-            <td style="font-weight:500">${esc(r.category)}</td>
-            <td style="color:var(--success-text)">${fmtNum(r.holding)}</td>
-            <td style="color:var(--transit-text)">${fmtNum(r.inTransit)}</td>
-            <td style="color:var(--danger-text)">${fmtNum(r.deployed)}</td>
-            <td style="font-weight:500">${fmtNum(r.holding + r.inTransit + r.deployed)}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>`;
   }
 
-  // ── Report 4: Product Breakdown ───────────────────────────────────────
-  function renderProductBreakdown() {
-    const range    = getDateRange();
-    const holding  = getHoldingData(range);
-    const deployed = getDeployedData(range);
-    const { shipments } = DB.getData();
-
-    const prods = {};
-    const addTo = (prod, cat, field) => {
-      if (!prods[prod]) prods[prod] = { product: prod, category: cat, holding: 0, inTransit: 0, deployed: 0, holdingVal: 0, deployedVal: 0 };
-      prods[prod][field]++;
-    };
-
-    holding.forEach(r => {
-      addTo(r.product, r.category, 'holding');
-      if (r.cost != null) prods[r.product].holdingVal += r.cost;
+  /** Stock value grouped by category */
+  function buildByCategory(from, to) {
+    const map = {};
+    Inventory.getAllSerialRows().filter(r => r.status === 'in-stock').forEach(r => {
+      const cat = r.category || 'Uncategorised';
+      if (!map[cat]) map[cat] = { category: cat, units: 0, value: 0, costed: 0 };
+      map[cat].units++;
+      if (r.cost != null) { map[cat].value += r.cost; map[cat].costed++; }
     });
-    shipments.filter(s => s.status === 'in-transit').forEach(s => {
-      s.products.forEach(p => p.serials.forEach(() => addTo(p.product, p.category, 'inTransit')));
-    });
-    deployed.forEach(r => {
-      addTo(r.product, r.category, 'deployed');
-      if (r.cost != null) prods[r.product].deployedVal += r.cost;
-    });
-
-    const prodRows = Object.values(prods).sort((a, b) => (b.holding + b.deployed) - (a.holding + a.deployed));
-
-    document.getElementById('rpt-product-breakdown').innerHTML = `
-      <div class="rpt-summary-cards">
-        <div class="rpt-card"><div class="rpt-card-label">Product lines</div><div class="rpt-card-val">${fmtNum(prodRows.length)}</div></div>
-        <div class="rpt-card"><div class="rpt-card-label">Total in stock</div><div class="rpt-card-val" style="color:var(--success-text)">${fmtNum(holding.length)}</div></div>
-        <div class="rpt-card"><div class="rpt-card-label">Total deployed</div><div class="rpt-card-val" style="color:var(--danger-text)">${fmtNum(deployed.length)}</div></div>
-      </div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Product</th><th>Category</th><th>In stock</th><th>In transit</th><th>Deployed</th><th>Holding value</th><th>Deployed value</th></tr></thead>
-          <tbody>${prodRows.map(r => `<tr>
-            <td style="font-weight:500">${esc(r.product)}</td>
-            <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
-            <td style="color:var(--success-text)">${fmtNum(r.holding)}</td>
-            <td style="color:var(--transit-text)">${fmtNum(r.inTransit)}</td>
-            <td style="color:var(--danger-text)">${fmtNum(r.deployed)}</td>
-            <td>${r.holdingVal  ? fmtMoney(r.holdingVal)  : '—'}</td>
-            <td>${r.deployedVal ? fmtMoney(r.deployedVal) : '—'}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>`;
+    return Object.values(map).sort((a, b) => b.value - a.value);
   }
 
-  // ── Report 5: Low Stock ───────────────────────────────────────────────
-  function renderLowStock() {
-    const lowItems = Inventory.getLowStockItems();
-    const map      = Inventory.getInventoryMap();
-    const allItems = Object.values(map);
-    const zeroItems = lowItems.filter(v => v.inStock.size === 0);
-    const warnItems = lowItems.filter(v => v.inStock.size > 0);
-
-    document.getElementById('rpt-low-stock').innerHTML = `
-      <div class="rpt-summary-cards">
-        <div class="rpt-card rpt-card-red">
-          <div class="rpt-card-label">Out of stock</div>
-          <div class="rpt-card-val" style="color:var(--danger-text)">${fmtNum(zeroItems.length)}</div>
-          <div class="rpt-card-sub">product lines at zero</div>
-        </div>
-        <div class="rpt-card rpt-card-amber">
-          <div class="rpt-card-label">Low stock warnings</div>
-          <div class="rpt-card-val" style="color:var(--warning-text)">${fmtNum(warnItems.length)}</div>
-          <div class="rpt-card-sub">at or below threshold</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Healthy stock</div>
-          <div class="rpt-card-val" style="color:var(--success-text)">${fmtNum(allItems.length - lowItems.length)}</div>
-          <div class="rpt-card-sub">product lines OK</div>
-        </div>
-      </div>
-      ${zeroItems.length ? `
-      <div class="rpt-chart-label" style="color:var(--danger-text)">Out of stock</div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Product</th><th>Category</th><th>Location</th><th>Threshold</th><th>Status</th></tr></thead>
-          <tbody>${zeroItems.map(v => `<tr>
-            <td style="font-weight:500">${esc(v.product)}</td>
-            <td><span class="cat-badge">${esc(v.category||'—')}</span></td>
-            <td><span class="loc-badge">${esc(v.location||'—')}</span></td>
-            <td>${DB.getThreshold(v.product+'||'+v.location)}</td>
-            <td><span class="badge b-zero">Out of stock</span></td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>` : ''}
-      ${warnItems.length ? `
-      <div class="rpt-chart-label" style="color:var(--warning-text);margin-top:1rem">Low stock warnings</div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Product</th><th>Category</th><th>Location</th><th>In stock</th><th>Threshold</th></tr></thead>
-          <tbody>${warnItems.map(v => `<tr>
-            <td style="font-weight:500">${esc(v.product)}</td>
-            <td><span class="cat-badge">${esc(v.category||'—')}</span></td>
-            <td><span class="loc-badge">${esc(v.location||'—')}</span></td>
-            <td><span class="badge b-low">${v.inStock.size}</span></td>
-            <td>${DB.getThreshold(v.product+'||'+v.location)}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>` : ''}
-      ${!lowItems.length ? '<div class="empty" style="padding:2rem">All products are well stocked</div>' : ''}`;
+  /** Stock value grouped by product */
+  function buildByProduct(from, to) {
+    const map = {};
+    Inventory.getAllSerialRows().filter(r => r.status === 'in-stock').forEach(r => {
+      const k = r.product;
+      if (!map[k]) map[k] = { product: k, category: r.category, units: 0, value: 0, costed: 0 };
+      map[k].units++;
+      if (r.cost != null) { map[k].value += r.cost; map[k].costed++; map[k].avgCost = map[k].value / map[k].costed; }
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value);
   }
 
-  // ── Report 6: Deployed Cost ───────────────────────────────────────────
-  function renderDeployedCost() {
-    const range    = getDateRange();
-    const deployed = getDeployedData(range);
-    const priced   = deployed.filter(r => r.cost != null);
-    const total    = priced.reduce((a, r) => a + r.cost, 0);
+  /** Low stock items */
+  function buildLowStock() {
+    return Inventory.getLowStockItems().map(v => {
+      const key = v.product + '||' + v.location;
+      const threshold = DB.getThreshold(key);
+      const gap = threshold - v.inStock.size;
+      return { ...v, threshold, gap, inStockCount: v.inStock.size };
+    }).sort((a, b) => a.inStockCount - b.inStockCount);
+  }
 
-    // By customer
-    const byCust = {};
-    deployed.forEach(r => {
+  /** Deployed cost grouped by customer */
+  function buildDeployedByCustomer(from, to) {
+    const map = {};
+    Inventory.getDeployedSerialRows().filter(r => inRange(r.date, from, to)).forEach(r => {
       const k = r.customer || 'Unknown';
-      if (!byCust[k]) byCust[k] = { customer: k, units: 0, value: 0, costed: 0, products: new Set() };
-      byCust[k].units++;
-      byCust[k].products.add(r.product);
-      if (r.cost != null) { byCust[k].costed++; byCust[k].value += r.cost; }
+      if (!map[k]) map[k] = { customer: k, units: 0, value: 0, costed: 0, firstDate: r.date, lastDate: r.date, products: new Set() };
+      map[k].units++;
+      map[k].products.add(r.product);
+      if (r.cost != null) { map[k].value += r.cost; map[k].costed++; }
+      if (r.date < map[k].firstDate) map[k].firstDate = r.date;
+      if (r.date > map[k].lastDate)  map[k].lastDate  = r.date;
     });
-    const custRows = Object.values(byCust).sort((a, b) => b.value - a.value);
-    const maxVal   = Math.max(...custRows.map(r => r.value), 1);
+    return Object.values(map).map(v => ({ ...v, products: v.products.size })).sort((a, b) => b.value - a.value);
+  }
 
-    document.getElementById('rpt-deployed-cost').innerHTML = `
-      <div class="rpt-summary-cards">
-        <div class="rpt-card rpt-card-red">
-          <div class="rpt-card-label">Total deployed value</div>
-          <div class="rpt-card-val">${fmtMoney(total)}</div>
-          <div class="rpt-card-sub">${fmtNum(priced.length)} priced units</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Units deployed</div>
-          <div class="rpt-card-val">${fmtNum(deployed.length)}</div>
-          <div class="rpt-card-sub">${deployed.length - priced.length} without cost</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Customers</div>
-          <div class="rpt-card-val">${fmtNum(custRows.length)}</div>
-          <div class="rpt-card-sub">with deployed units</div>
-        </div>
-        <div class="rpt-card">
-          <div class="rpt-card-label">Avg cost per unit</div>
-          <div class="rpt-card-val">${priced.length ? fmtMoney(total / priced.length) : '—'}</div>
-          <div class="rpt-card-sub">deployed units</div>
-        </div>
+  /** Stock holding cost by location */
+  function buildHoldingByLocation(from, to) {
+    const map = {};
+    Inventory.getAllSerialRows().filter(r => r.status === 'in-stock').forEach(r => {
+      const k = r.location || 'Unassigned';
+      if (!map[k]) map[k] = { location: k, units: 0, value: 0, costed: 0 };
+      map[k].units++;
+      if (r.cost != null) { map[k].value += r.cost; map[k].costed++; }
+    });
+    return Object.values(map).sort((a, b) => b.value - a.value);
+  }
+
+  // ── Chart renderer (pure canvas — no deps) ────────────────────────────
+  function drawBarChart(canvasId, labels, values, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const PAD = { top: 20, right: 20, bottom: 60, left: 72 };
+    const chartW = W - PAD.left - PAD.right;
+    const chartH = H - PAD.top - PAD.bottom;
+
+    // Detect dark mode
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const textCol  = isDark ? '#9b9b97' : '#6b6b68';
+    const gridCol  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+    const bgCol    = isDark ? '#1c1c1a' : '#ffffff';
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = bgCol;
+    ctx.fillRect(0, 0, W, H);
+
+    const max = Math.max(...values, 1);
+    const barW = Math.floor(chartW / labels.length * 0.6);
+    const gap  = Math.floor(chartW / labels.length);
+
+    // Grid lines
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) {
+      const y = PAD.top + chartH - (i / steps) * chartH;
+      ctx.strokeStyle = gridCol;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + chartW, y); ctx.stroke();
+      ctx.fillStyle = textCol;
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      const val = (max * i / steps);
+      ctx.fillText(val >= 1000 ? '$' + (val/1000).toFixed(1) + 'k' : '$' + val.toFixed(0), PAD.left - 6, y + 3);
+    }
+
+    // Bars
+    labels.forEach((label, i) => {
+      const barH = values[i] > 0 ? Math.max(2, (values[i] / max) * chartH) : 0;
+      const x = PAD.left + i * gap + (gap - barW) / 2;
+      const y = PAD.top + chartH - barH;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x, y, barW, barH, [3, 3, 0, 0]) : ctx.rect(x, y, barW, barH);
+      ctx.fill();
+
+      // Value label on bar
+      if (values[i] > 0) {
+        ctx.fillStyle = isDark ? '#e8e8e4' : '#1a1a18';
+        ctx.font = 'bold 10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        const lbl = values[i] >= 1000 ? '$' + (values[i]/1000).toFixed(1)+'k' : '$'+values[i].toFixed(0);
+        ctx.fillText(lbl, x + barW / 2, y - 4);
+      }
+
+      // X axis label (truncate)
+      ctx.fillStyle = textCol;
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const short = label.length > 12 ? label.slice(0, 11) + '…' : label;
+      ctx.fillText(short, x + barW / 2, PAD.top + chartH + 16);
+    });
+  }
+
+  function drawDonutChart(canvasId, labels, values, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const cx = W * 0.38, cy = H / 2;
+    const R = Math.min(cx, cy) - 16;
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const bgCol  = isDark ? '#1c1c1a' : '#ffffff';
+    const textCol= isDark ? '#e8e8e4' : '#1a1a18';
+    const mutCol = isDark ? '#9b9b97' : '#6b6b68';
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = bgCol;
+    ctx.fillRect(0, 0, W, H);
+
+    const total = values.reduce((a, v) => a + v, 0);
+    if (total === 0) { ctx.fillStyle = mutCol; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('No data', cx, cy); return; }
+
+    let startAngle = -Math.PI / 2;
+    values.forEach((v, i) => {
+      const slice = (v / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R, startAngle, startAngle + slice);
+      ctx.closePath();
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fill();
+      startAngle += slice;
+    });
+
+    // Donut hole
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.58, 0, Math.PI * 2); ctx.fillStyle = bgCol; ctx.fill();
+
+    // Centre total
+    ctx.fillStyle = textCol; ctx.font = 'bold 13px -apple-system,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(fmt$(total), cx, cy + 5);
+
+    // Legend
+    const legX = W * 0.72, legStartY = cy - (labels.length * 18) / 2;
+    labels.forEach((lbl, i) => {
+      const y = legStartY + i * 20;
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fillRect(legX - 24, y - 6, 12, 12);
+      ctx.fillStyle = mutCol; ctx.font = '10px -apple-system,sans-serif'; ctx.textAlign = 'left';
+      const pct = total > 0 ? ((values[i]/total)*100).toFixed(0)+'%' : '0%';
+      const short = lbl.length > 16 ? lbl.slice(0,15)+'…' : lbl;
+      ctx.fillText(`${short} (${pct})`, legX - 8, y + 4);
+    });
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────
+  function render() {
+    const from = document.getElementById('rpt-date-from').value;
+    const to   = document.getElementById('rpt-date-to').value;
+
+    const summary    = buildSummary(from, to);
+    const byCategory = buildByCategory(from, to);
+    const byProduct  = buildByProduct(from, to);
+    const lowStock   = buildLowStock();
+    const byCustomer = buildDeployedByCustomer(from, to);
+    const byLocation = buildHoldingByLocation(from, to);
+
+    const AIO_PURPLE  = '#5F68BC';
+    const AIO_ORANGE  = '#F4733B';
+    const AIO_GREEN   = '#3b6d11';
+    const AIO_AMBER   = '#854f0b';
+    const DONUT_COLORS = [AIO_PURPLE, AIO_ORANGE, '#378add', AIO_GREEN, AIO_AMBER, '#a32d2d'];
+
+    // ── Summary KPI cards ──────────────────────────────────────────────
+    document.getElementById('rpt-summary').innerHTML = `
+      <div class="rpt-card purple">
+        <div class="rpt-card-label">Stock Holding Value</div>
+        <div class="rpt-card-val">${fmt$(summary.holdingValue)}</div>
+        <div class="rpt-card-sub">${summary.holdingUnits} units · ${summary.holdingCosted} priced</div>
       </div>
-      <div class="rpt-chart-label">Deployed value by customer</div>
-      <div class="rpt-bar-chart">
-        ${custRows.map(r => `
-          <div class="rpt-bar-row">
-            <div class="rpt-bar-name" title="${esc(r.customer)}">${esc(r.customer)}</div>
-            <div class="rpt-bar-track">
-              <div class="rpt-bar-fill rpt-fill-coral" style="width:${Math.max(2, Math.round(r.value / maxVal * 100))}%"></div>
-            </div>
-            <div class="rpt-bar-val">${fmtMoney(r.value)} <span class="rpt-bar-units">${r.units}u</span></div>
-          </div>`).join('')}
+      <div class="rpt-card orange">
+        <div class="rpt-card-label">Deployed Stock Value</div>
+        <div class="rpt-card-val">${fmt$(summary.deployedValue)}</div>
+        <div class="rpt-card-sub">${summary.deployedUnits} units · ${summary.deployedCosted} priced</div>
       </div>
-      <div class="rpt-table-wrap">
-        <table class="rpt-table">
-          <thead><tr><th>Customer / Account</th><th>Units deployed</th><th>Products</th><th>Total value</th><th>Avg per unit</th></tr></thead>
-          <tbody>${custRows.map(r => `<tr>
-            <td style="font-weight:500">${esc(r.customer)}</td>
-            <td>${fmtNum(r.units)}</td>
-            <td style="font-size:11px;color:var(--text-muted)">${[...r.products].map(p => esc(p)).join(', ')}</td>
-            <td style="font-weight:500;color:var(--danger-text)">${fmtMoney(r.value)}</td>
-            <td>${r.costed ? fmtMoney(r.value / r.costed) : '—'}</td>
-          </tr>`).join('')}</tbody>
-        </table>
+      <div class="rpt-card green">
+        <div class="rpt-card-label">In Transit Value</div>
+        <div class="rpt-card-val">${fmt$(summary.transitValue)}</div>
+        <div class="rpt-card-sub">${summary.transitUnits} units</div>
+      </div>
+      <div class="rpt-card amber">
+        <div class="rpt-card-label">Total Portfolio</div>
+        <div class="rpt-card-val">${fmt$(summary.holdingValue + summary.deployedValue + summary.transitValue)}</div>
+        <div class="rpt-card-sub">Holding + Deployed + Transit</div>
       </div>`;
-  }
 
-  // ── Master render ─────────────────────────────────────────────────────
-  function renderAll() {
-    renderStockValue();
-    renderValueByCategory();
-    renderCategoryBreakdown();
-    renderProductBreakdown();
-    renderLowStock();
-    renderDeployedCost();
-  }
-
-  // ── CSV Exports ───────────────────────────────────────────────────────
-  function exportReport(reportId) {
-    const range = getDateRange();
-    let rows, filename;
-
-    if (reportId === 'stock-value') {
-      const data = getHoldingData(range);
-      rows = [['Serial','Product','Category','Location','Cost','Received Date']];
-      data.forEach(r => rows.push([r.serial, r.product, r.category, r.location, r.cost??'', r.receivedDate ? fmtDate(r.receivedDate) : '']));
-      filename = 'aio_stock_value.csv';
-    } else if (reportId === 'value-category') {
-      const data = getHoldingData(range);
-      const bycat = {};
-      data.forEach(r => {
-        const k = r.category||'Uncategorised';
-        if (!bycat[k]) bycat[k] = {category:k,units:0,costedUnits:0,total:0};
-        bycat[k].units++;
-        if (r.cost!=null){bycat[k].costedUnits++;bycat[k].total+=r.cost;}
-      });
-      rows = [['Category','Units','Priced Units','Total Value','Avg Cost']];
-      Object.values(bycat).sort((a,b)=>b.total-a.total).forEach(r => rows.push([r.category,r.units,r.costedUnits,r.total.toFixed(2),r.costedUnits?((r.total/r.costedUnits).toFixed(2)):'']));
-      filename = 'aio_value_by_category.csv';
-    } else if (reportId === 'category-breakdown') {
-      const holding  = getHoldingData(range);
-      const deployed = getDeployedData(range);
-      const cats = {};
-      holding.forEach(r  => { const k=r.category||'Uncategorised'; if(!cats[k])cats[k]={category:k,holding:0,inTransit:0,deployed:0}; cats[k].holding++; });
-      deployed.forEach(r => { const k=r.category||'Uncategorised'; if(!cats[k])cats[k]={category:k,holding:0,inTransit:0,deployed:0}; cats[k].deployed++; });
-      rows = [['Category','In Stock','In Transit','Deployed','Total']];
-      Object.values(cats).forEach(r => rows.push([r.category,r.holding,r.inTransit,r.deployed,r.holding+r.inTransit+r.deployed]));
-      filename = 'aio_category_breakdown.csv';
-    } else if (reportId === 'product-breakdown') {
-      const holding  = getHoldingData(range);
-      const deployed = getDeployedData(range);
-      const prods = {};
-      holding.forEach(r  => { if(!prods[r.product])prods[r.product]={product:r.product,category:r.category,holding:0,deployed:0,holdingVal:0,deployedVal:0}; prods[r.product].holding++; if(r.cost)prods[r.product].holdingVal+=r.cost; });
-      deployed.forEach(r => { if(!prods[r.product])prods[r.product]={product:r.product,category:r.category,holding:0,deployed:0,holdingVal:0,deployedVal:0}; prods[r.product].deployed++; if(r.cost)prods[r.product].deployedVal+=r.cost; });
-      rows = [['Product','Category','In Stock','Deployed','Holding Value','Deployed Value']];
-      Object.values(prods).forEach(r => rows.push([r.product,r.category,r.holding,r.deployed,r.holdingVal.toFixed(2),r.deployedVal.toFixed(2)]));
-      filename = 'aio_product_breakdown.csv';
-    } else if (reportId === 'low-stock') {
-      const lowItems = Inventory.getLowStockItems();
-      rows = [['Product','Category','Location','In Stock','Threshold','Status']];
-      lowItems.forEach(v => rows.push([v.product,v.category,v.location,v.inStock.size,DB.getThreshold(v.product+'||'+v.location),v.inStock.size===0?'Out of stock':'Low stock']));
-      filename = 'aio_low_stock.csv';
-    } else if (reportId === 'deployed-cost') {
-      const data = getDeployedData(range);
-      rows = [['Serial','Product','Category','Customer','Dispatched By','Date','Reference','Cost']];
-      data.forEach(r => rows.push([r.serial,r.product,r.category,r.customer,r.by,fmtDate(r.date),r.ref,r.cost??'']));
-      filename = 'aio_deployed_cost.csv';
+    // ── Helper: inline bar rows ────────────────────────────────────────
+    function barRows(items, labelKey, valueKey, color) {
+      const max = Math.max(...items.map(i => i[valueKey]), 1);
+      return items.map(item => `
+        <div class="rpt-bar-row">
+          <div class="rpt-bar-label">${esc(item[labelKey])}</div>
+          <div class="rpt-bar-track"><div class="rpt-bar-fill ${color==='orange'?'orange':''}" style="width:${Math.round(item[valueKey]/max*100)}%"></div></div>
+          <div class="rpt-bar-val">${fmt$(item[valueKey])}</div>
+        </div>`).join('');
     }
 
-    if (rows) {
-      const csv = rows.map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(',')).join('\n');
-      const a   = document.createElement('a');
-      a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-      a.download = filename;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    }
+    // ── Stock value by category ────────────────────────────────────────
+    document.getElementById('rpt-by-category').innerHTML = `
+      <div class="rpt-grid">
+        <div>
+          ${byCategory.length
+            ? barRows(byCategory, 'category', 'value', 'purple')
+            : '<div class="empty">No holding stock with costs</div>'}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Category</th><th>Units</th><th>Priced</th><th>Total value</th><th>Avg / unit</th></tr></thead>
+            <tbody>${byCategory.length
+              ? byCategory.map(c => `<tr>
+                  <td><span class="cat-badge">${esc(c.category)}</span></td>
+                  <td>${c.units}</td>
+                  <td style="color:var(--text-hint)">${c.costed}</td>
+                  <td style="font-weight:600">${fmt$(c.value)}</td>
+                  <td style="color:var(--text-muted)">${c.costed > 0 ? fmt$(c.value/c.costed) : '—'}</td>
+                </tr>`).join('')
+              : '<tr><td colspan="5"><div class="empty">No data</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // ── Stock value by product ─────────────────────────────────────────
+    document.getElementById('rpt-by-product').innerHTML = `
+      <div class="rpt-grid">
+        <div>
+          ${byProduct.length
+            ? barRows(byProduct, 'product', 'value', 'purple')
+            : '<div class="empty">No holding stock with costs</div>'}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:32%">Product</th><th>Category</th><th>Units</th><th>Total value</th><th>Avg / unit</th></tr></thead>
+            <tbody>${byProduct.length
+              ? byProduct.map(p => `<tr>
+                  <td style="font-weight:500">${esc(p.product)}</td>
+                  <td><span class="cat-badge">${esc(p.category)}</span></td>
+                  <td>${p.units}</td>
+                  <td style="font-weight:600">${fmt$(p.value)}</td>
+                  <td style="color:var(--text-muted)">${p.costed > 0 ? fmt$(p.value/p.costed) : '—'}</td>
+                </tr>`).join('')
+              : '<tr><td colspan="5"><div class="empty">No data</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // ── Holding cost by location ───────────────────────────────────────
+    document.getElementById('rpt-by-location').innerHTML = `
+      <div class="rpt-grid">
+        <div>
+          ${byLocation.length
+            ? barRows(byLocation, 'location', 'value', 'purple')
+            : '<div class="empty">No location data</div>'}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Units</th><th>Priced</th><th>Total value</th></tr></thead>
+            <tbody>${byLocation.length
+              ? byLocation.map(l => `<tr>
+                  <td><span class="loc-badge">${esc(l.location)}</span></td>
+                  <td>${l.units}</td>
+                  <td style="color:var(--text-hint)">${l.costed}</td>
+                  <td style="font-weight:600">${fmt$(l.value)}</td>
+                </tr>`).join('')
+              : '<tr><td colspan="4"><div class="empty">No data</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // ── Low stock items ────────────────────────────────────────────────
+    document.getElementById('rpt-low-stock').innerHTML = lowStock.length
+      ? `<table>
+          <thead><tr>
+            <th style="width:25%">Product</th><th style="width:13%">Category</th>
+            <th style="width:15%">Location</th><th>In stock</th>
+            <th>Threshold</th><th>Shortfall</th><th>Status</th>
+          </tr></thead>
+          <tbody>${lowStock.map(item => `<tr>
+            <td style="font-weight:500">${esc(item.product)}</td>
+            <td><span class="cat-badge">${esc(item.category||'—')}</span></td>
+            <td><span class="loc-badge">${esc(item.location||'—')}</span></td>
+            <td style="font-weight:600;color:var(--${item.inStockCount===0?'danger':'warning'}-text)">${item.inStockCount}</td>
+            <td style="color:var(--text-muted)">${item.threshold}</td>
+            <td style="color:var(--danger-text)">${item.gap > 0 ? '+'+item.gap+' needed' : 'At threshold'}</td>
+            <td><span class="badge ${item.inStockCount===0?'b-zero':'b-low'}">${item.inStockCount===0?'Out of stock':'Low stock'}</span></td>
+          </tr>`).join('')}</tbody>
+        </table>`
+      : '<div class="empty">All products above threshold</div>';
+
+    // ── Deployed cost by customer ──────────────────────────────────────
+    document.getElementById('rpt-by-customer').innerHTML = `
+      <div class="rpt-grid">
+        <div>
+          ${byCustomer.length
+            ? barRows(byCustomer, 'customer', 'value', 'orange')
+            : '<div class="empty">No deployed stock in range</div>'}
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th style="width:28%">Customer / Account</th><th>Units</th>
+              <th>Products</th><th>Total value</th><th>First deploy</th><th>Last deploy</th>
+            </tr></thead>
+            <tbody>${byCustomer.length
+              ? byCustomer.map(c => `<tr>
+                  <td style="font-weight:500">${esc(c.customer)}</td>
+                  <td>${c.units}</td>
+                  <td style="color:var(--text-muted)">${c.products}</td>
+                  <td style="font-weight:600">${fmt$(c.value)}</td>
+                  <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.firstDate)}</td>
+                  <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.lastDate)}</td>
+                </tr>`).join('')
+              : '<tr><td colspan="6"><div class="empty">No deployed stock in range</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // ── Stock value by category — bar chart + table ──
+    const catLabels = byCategory.map(c => c.category);
+    const catValues = byCategory.map(c => c.value);
+    document.getElementById('rpt-by-category').innerHTML = `
+      <div class="rpt-section-grid">
+        <div>
+          <canvas id="chart-category" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Category</th><th>Units</th><th>Priced</th><th>Total value</th><th>Avg / unit</th></tr></thead>
+            <tbody>${byCategory.length ? byCategory.map(c => `<tr>
+              <td><span class="cat-badge">${esc(c.category)}</span></td>
+              <td>${c.units}</td>
+              <td style="color:var(--text-hint)">${c.costed}</td>
+              <td style="font-weight:600">${fmt$(c.value)}</td>
+              <td style="color:var(--text-muted)">${c.costed > 0 ? fmt$(c.value / c.costed) : '—'}</td>
+            </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No holding stock with costs</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+    setTimeout(() => drawBarChart('chart-category', catLabels, catValues, '#378add'), 0);
+
+    // ── Stock value by product — donut + table ──
+    const prodLabels = byProduct.map(p => p.product);
+    const prodValues = byProduct.map(p => p.value);
+    document.getElementById('rpt-by-product').innerHTML = `
+      <div class="rpt-section-grid">
+        <div>
+          <canvas id="chart-product" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Product</th><th>Category</th><th>Units</th><th>Total value</th><th>Avg / unit</th></tr></thead>
+            <tbody>${byProduct.length ? byProduct.map(p => `<tr>
+              <td style="font-weight:500">${esc(p.product)}</td>
+              <td><span class="cat-badge">${esc(p.category)}</span></td>
+              <td>${p.units}</td>
+              <td style="font-weight:600">${fmt$(p.value)}</td>
+              <td style="color:var(--text-muted)">${p.costed > 0 ? fmt$(p.value / p.costed) : '—'}</td>
+            </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No holding stock with costs</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+    setTimeout(() => drawDonutChart('chart-product', prodLabels, prodValues, CAT_COLORS), 0);
+
+    // ── Holding cost by location ──
+    const locLabels = byLocation.map(l => l.location);
+    const locValues = byLocation.map(l => l.value);
+    document.getElementById('rpt-by-location').innerHTML = `
+      <div class="rpt-section-grid">
+        <div>
+          <canvas id="chart-location" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Units</th><th>Priced</th><th>Total value</th></tr></thead>
+            <tbody>${byLocation.length ? byLocation.map(l => `<tr>
+              <td><span class="loc-badge">${esc(l.location)}</span></td>
+              <td>${l.units}</td>
+              <td style="color:var(--text-hint)">${l.costed}</td>
+              <td style="font-weight:600">${fmt$(l.value)}</td>
+            </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No location data</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+    setTimeout(() => drawBarChart('chart-location', locLabels, locValues, '#3b6d11'), 0);
+
+    // ── Low stock items ──
+    document.getElementById('rpt-low-stock').innerHTML = lowStock.length
+      ? `<table>
+          <thead><tr>
+            <th style="width:26%">Product</th>
+            <th style="width:13%">Category</th>
+            <th style="width:15%">Location</th>
+            <th style="width:10%">In stock</th>
+            <th style="width:10%">Threshold</th>
+            <th style="width:12%">Shortfall</th>
+            <th style="width:14%">Status</th>
+          </tr></thead>
+          <tbody>${lowStock.map(item => `<tr>
+            <td style="font-weight:500">${esc(item.product)}</td>
+            <td><span class="cat-badge">${esc(item.category||'—')}</span></td>
+            <td><span class="loc-badge">${esc(item.location||'—')}</span></td>
+            <td style="font-weight:600;color:var(--${item.inStockCount===0?'danger':'warning'}-text)">${item.inStockCount}</td>
+            <td style="color:var(--text-muted)">${item.threshold}</td>
+            <td style="color:var(--danger-text)">${item.gap > 0 ? '+' + item.gap + ' needed' : 'At threshold'}</td>
+            <td><span class="badge ${item.inStockCount===0?'b-zero':'b-low'}">${item.inStockCount===0?'Out of stock':'Low stock'}</span></td>
+          </tr>`).join('')}</tbody>
+        </table>`
+      : '<div class="empty">No low stock items — all products above threshold</div>';
+
+    // ── Deployed cost by customer ──
+    const custLabels = byCustomer.map(c => c.customer);
+    const custValues = byCustomer.map(c => c.value);
+    document.getElementById('rpt-by-customer').innerHTML = `
+      <div class="rpt-section-grid">
+        <div>
+          <canvas id="chart-customer" width="480" height="220" style="width:100%;height:220px;border-radius:var(--r-md);"></canvas>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th style="width:28%">Customer / Account</th>
+              <th>Units</th>
+              <th>Products</th>
+              <th>Total value</th>
+              <th>First deploy</th>
+              <th>Last deploy</th>
+            </tr></thead>
+            <tbody>${byCustomer.length ? byCustomer.map(c => `<tr>
+              <td style="font-weight:500">${esc(c.customer)}</td>
+              <td>${c.units}</td>
+              <td style="color:var(--text-muted)">${c.products}</td>
+              <td style="font-weight:600">${fmt$(c.value)}</td>
+              <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.firstDate)}</td>
+              <td style="color:var(--text-hint);font-size:11px">${fmtDate(c.lastDate)}</td>
+            </tr>`).join('') : '<tr><td colspan="6"><div class="empty">No deployed stock in range</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+    setTimeout(() => drawDonutChart('chart-customer', custLabels, custValues, ['#a32d2d','#d85a5a','#f09595','#fcebeb','#854f0b','#ef9f27']), 0);
   }
 
-  return { renderAll, renderStockValue, renderValueByCategory, renderCategoryBreakdown, renderProductBreakdown, renderLowStock, renderDeployedCost, exportReport };
+  // ── CSV exports ───────────────────────────────────────────────────────
+  function exportAll() {
+    const from = document.getElementById('rpt-date-from').value;
+    const to   = document.getElementById('rpt-date-to').value;
+
+    const rows = [
+      ['AIO Inventory — Report Export'],
+      ['Generated', new Date().toLocaleString()],
+      ['Date range', from || 'All time', to || ''],
+      [],
+      ['=== SUMMARY ==='],
+    ];
+    const s = buildSummary(from, to);
+    rows.push(['Metric','Value','Units']);
+    rows.push(['Stock Holding Value', s.holdingValue.toFixed(2), s.holdingUnits]);
+    rows.push(['Deployed Stock Value', s.deployedValue.toFixed(2), s.deployedUnits]);
+    rows.push(['In Transit Value', s.transitValue.toFixed(2), s.transitUnits]);
+    rows.push([]);
+    rows.push(['=== STOCK VALUE BY CATEGORY ===']);
+    rows.push(['Category','Units','Priced Units','Total Value','Avg per Unit']);
+    buildByCategory(from, to).forEach(c => rows.push([c.category, c.units, c.costed, c.value.toFixed(2), c.costed > 0 ? (c.value/c.costed).toFixed(2) : '']));
+    rows.push([]);
+    rows.push(['=== STOCK VALUE BY PRODUCT ===']);
+    rows.push(['Product','Category','Units','Total Value','Avg per Unit']);
+    buildByProduct(from, to).forEach(p => rows.push([p.product, p.category, p.units, p.value.toFixed(2), p.costed > 0 ? (p.value/p.costed).toFixed(2) : '']));
+    rows.push([]);
+    rows.push(['=== HOLDING COST BY LOCATION ===']);
+    rows.push(['Location','Units','Priced Units','Total Value']);
+    buildHoldingByLocation(from, to).forEach(l => rows.push([l.location, l.units, l.costed, l.value.toFixed(2)]));
+    rows.push([]);
+    rows.push(['=== LOW STOCK ITEMS ===']);
+    rows.push(['Product','Category','Location','In Stock','Threshold','Shortfall','Status']);
+    buildLowStock().forEach(i => rows.push([i.product, i.category, i.location, i.inStockCount, i.threshold, i.gap > 0 ? i.gap : 0, i.inStockCount === 0 ? 'Out of stock' : 'Low stock']));
+    rows.push([]);
+    rows.push(['=== DEPLOYED VALUE BY CUSTOMER ===']);
+    rows.push(['Customer','Units Deployed','Product Lines','Total Value','First Deploy','Last Deploy']);
+    buildDeployedByCustomer(from, to).forEach(c => rows.push([c.customer, c.units, c.products, c.value.toFixed(2), fmtDate(c.firstDate), fmtDate(c.lastDate)]));
+
+    const csv = rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g,'""') + '"').join(',')).join('\n');
+    const a   = document.createElement('a');
+    a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = `aio_report_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  return { render, exportAll };
 })();
