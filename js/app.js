@@ -11,6 +11,7 @@
 
     const isOther = row.product === 'Other' || (row.product && !Inventory.PRODUCTS.find(p => p.name === row.product));
     const autoCategory = Inventory.PRODUCTS.find(p => p.name === row.product)?.category || row.category || '';
+    const noSerial = !!row.noSerial;
 
     return `
     <div class="product-row-card" id="rowcard-${row.id}">
@@ -52,13 +53,37 @@
         <input class="fi" id="${row.id}-threshold" data-rowid="${row.id}" data-field="threshold"
           type="number" min="0" value="${esc(row.threshold)}" placeholder="e.g. 5 (default 3)" />
       </div>`}
-      <div class="form-group">
-        <label class="form-label">Serial numbers *</label>
-        <input class="fi fi-mono" id="${row.id}-serial-field" data-rowid="${row.id}"
-          placeholder="Type or scan → Enter. Paste multiple lines for bulk." />
-        <div class="hint">Press Enter or comma to add · Paste a list to bulk import</div>
-        <div class="serial-row-list" id="${row.id}-serial-list"></div>
-        <div class="hint" id="${row.id}-count">0 serials</div>
+
+      <!-- No serial toggle -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <label class="used-toggle" id="${row.id}-noserial-label">
+          <input type="checkbox" id="${row.id}-noserial" ${noSerial ? 'checked' : ''} />
+          <span class="used-toggle-track"><span class="used-toggle-thumb"></span></span>
+          <span class="used-toggle-label" style="font-size:12px;">No serial numbers</span>
+        </label>
+        <span class="hint" style="margin-top:0;">Check if this product doesn't use serial numbers</span>
+      </div>
+
+      <!-- Serial numbers section (shown when noSerial is off) -->
+      <div id="${row.id}-serial-section" style="display:${noSerial ? 'none' : 'block'};">
+        <div class="form-group">
+          <label class="form-label">Serial numbers</label>
+          <input class="fi fi-mono" id="${row.id}-serial-field" data-rowid="${row.id}"
+            placeholder="Type or scan → Enter. Paste multiple lines for bulk." />
+          <div class="hint">Press Enter or comma to add · Paste a list to bulk import</div>
+          <div class="serial-row-list" id="${row.id}-serial-list"></div>
+          <div class="hint" id="${row.id}-count">0 serials</div>
+        </div>
+      </div>
+
+      <!-- Quantity section (shown when noSerial is on) -->
+      <div id="${row.id}-qty-section" style="display:${noSerial ? 'block' : 'none'};">
+        <div class="form-group" style="max-width:200px;">
+          <label class="form-label">Quantity *</label>
+          <input class="fi" id="${row.id}-qty" type="number" min="1" step="1"
+            value="${row.qty || ''}" placeholder="e.g. 10" />
+          <div class="hint">Number of units to ${showCost ? 'receive' : 'register'}</div>
+        </div>
       </div>
     </div>`;
   }
@@ -187,6 +212,28 @@
     }
     // Apply on initial load if product already set
     if (sel.value) applySelection(sel.value);
+
+    // Wire no-serial toggle
+    const noSerialChk = document.getElementById(`${rowId}-noserial`);
+    const serialSection = document.getElementById(`${rowId}-serial-section`);
+    const qtySection    = document.getElementById(`${rowId}-qty-section`);
+    if (noSerialChk) {
+      noSerialChk.addEventListener('change', () => {
+        const row = rowList.find(r => r.id === rowId);
+        if (!row) return;
+        row.noSerial = noSerialChk.checked;
+        row.serials  = []; // clear serials when toggling
+        if (serialSection) serialSection.style.display = row.noSerial ? 'none' : 'block';
+        if (qtySection)    qtySection.style.display    = row.noSerial ? 'block' : 'none';
+      });
+    }
+    const qtyEl = document.getElementById(`${rowId}-qty`);
+    if (qtyEl) {
+      qtyEl.addEventListener('input', () => {
+        const row = rowList.find(r => r.id === rowId);
+        if (row) row.qty = parseInt(qtyEl.value) || '';
+      });
+    }
   }
 
   function syncRowFields(row) {
@@ -195,22 +242,23 @@
     const catEl  = document.getElementById(`${row.id}-category-display`);
     const costEl = document.getElementById(`${row.id}-unit-cost`);
     const thrEl  = document.getElementById(`${row.id}-threshold`);
+    const nsChk  = document.getElementById(`${row.id}-noserial`);
+    const qtyEl  = document.getElementById(`${row.id}-qty`);
     if (sel) {
-      if (sel.value === 'Other' && custom) {
-        row.product = custom.value.trim() || 'Other';
-      } else if (sel.value) {
-        row.product = sel.value;
-      }
+      if (sel.value === 'Other' && custom) row.product = custom.value.trim() || 'Other';
+      else if (sel.value) row.product = sel.value;
     }
-    if (catEl) row.category = catEl.value;
-    if (costEl) row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+    if (catEl)  row.category  = catEl.value;
+    if (costEl) row.unitCost  = costEl.value !== '' ? parseFloat(costEl.value) : null;
     if (thrEl)  row.threshold = thrEl.value;
+    if (nsChk)  row.noSerial  = nsChk.checked;
+    if (qtyEl)  row.qty       = parseInt(qtyEl.value) || '';
   }
 
   // ── Stock In ──────────────────────────────────────────────────────────
   let inRows = [];
   let _inCounter = 0;
-  function newInRow() { return { id: 'in' + (++_inCounter), product: '', category: '', threshold: '', serials: [], serialCosts: {} }; }
+  function newInRow() { return { id: 'in' + (++_inCounter), product: '', category: '', threshold: '', serials: [], serialCosts: {}, noSerial: false, qty: '' }; }
 
   function renderInRows() {
     const c = document.getElementById('product-rows');
@@ -242,6 +290,22 @@
       const conditionEl = document.querySelector('input[name="in-condition"]:checked');
       const condition   = conditionEl ? conditionEl.value : '';
       const poNumber    = document.getElementById('in-po')?.value.trim() || '';
+
+      // For no-serial rows, generate placeholder serial IDs
+      inRows.forEach(row => {
+        if (row.noSerial) {
+          const qty = parseInt(row.qty) || 0;
+          if (qty < 1) throw new Error(`"${row.product || 'Product'}" has no serial numbers — enter a quantity.`);
+          const ts = Date.now();
+          row.serials = Array.from({length: qty}, (_, i) =>
+            `NS-${(row.product||'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8)}-${ts}-${i+1}`
+          );
+          row.noSerialQty = qty;
+        } else if (!row.serials || row.serials.length === 0) {
+          throw new Error(`"${row.product || 'Product'}" requires serial numbers or check "No serial numbers".`);
+        }
+      });
+
       Inventory.stockIn({
         supplier:   document.getElementById('in-supplier').value.trim(),
         location:   document.getElementById('in-loc').value.trim(),
@@ -256,7 +320,7 @@
         inRows.forEach(row => {
           if (row.unitCost != null) {
             row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
-            DB.setProductCost(row.product, row.unitCost, Inventory.getInventoryMap());
+            if (!row.noSerial) DB.setProductCost(row.product, row.unitCost, Inventory.getInventoryMap());
           }
         });
       }
@@ -270,7 +334,7 @@
   // ── In Transit ────────────────────────────────────────────────────────
   let trRows = [];
   let _trCounter = 0;
-  function newTrRow() { return { id: 'tr' + (++_trCounter), product: '', category: '', serials: [], serialCosts: {} }; }
+  function newTrRow() { return { id: 'tr' + (++_trCounter), product: '', category: '', serials: [], serialCosts: {}, noSerial: false, qty: '' }; }
 
   function renderTrRows() {
     const c = document.getElementById('transit-product-rows');
@@ -294,18 +358,27 @@
   function submitTransit() {
     trRows.forEach(syncRowFields);
     try {
+      // For no-serial rows, generate placeholder serial IDs
+      trRows.forEach(row => {
+        if (row.noSerial) {
+          const qty = parseInt(row.qty) || 0;
+          if (qty < 1) throw new Error(`"${row.product || 'Product'}" has no serial numbers — enter a quantity.`);
+          const ts = Date.now();
+          row.serials = Array.from({length: qty}, (_, i) =>
+            `NS-${(row.product||'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8)}-${ts}-${i+1}`
+          );
+          row.noSerialQty = qty;
+        } else if (!row.serials || row.serials.length === 0) {
+          throw new Error(`"${row.product || 'Product'}" requires serial numbers or check "No serial numbers".`);
+        }
+      });
+
       Inventory.createShipment({
         supplier:   document.getElementById('tr-supplier').value.trim(),
         location:   document.getElementById('tr-loc').value.trim(),
         expectedBy: document.getElementById('tr-expected').value,
         poNumber:   document.getElementById('tr-po')?.value.trim() || '',
         products:   trRows,
-      });
-      // Apply unit cost to in-transit serials
-      trRows.forEach(row => {
-        if (row.unitCost != null) {
-          row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
-        }
       });
       const total = trRows.reduce((a, r) => a + r.serials.length, 0);
       clearTransitForm();
@@ -344,6 +417,11 @@
       ? (map[row.product + '||' + row.location]?.inStock.size || 0)
       : null;
 
+    // Detect if this product only has NS- (no-serial) stock
+    const isNoSerial = row.product && row.location
+      ? [...(map[row.product + '||' + row.location]?.inStock || [])].every(s => s.startsWith('NS-'))
+      : false;
+
     return `
     <div class="product-row-card" id="out-rowcard-${row.id}">
       <div class="product-row-header">
@@ -367,20 +445,29 @@
         </div>
       </div>
 
-      <!-- Serial numbers (shown when product has serials) -->
+      ${availCount !== null ? `<div class="hint" style="margin-bottom:10px;">${availCount} unit${availCount!==1?'s':''} available at this location</div>` : ''}
+
+      ${row.product && row.location ? (isNoSerial ? `
+      <!-- Qty picker for no-serial products -->
+      <div class="form-group" style="max-width:200px;">
+        <label class="form-label">Quantity to dispatch *</label>
+        <input class="fi" id="${row.id}-out-qty" type="number" min="1" max="${availCount||999}" step="1"
+          value="${row.qty || ''}" placeholder="e.g. 5" />
+        <div class="hint">Max available: ${availCount}</div>
+      </div>
+      ` : `
+      <!-- Serial number entry for serialised products -->
       <div id="${row.id}-out-serials-section">
         <div class="form-group">
-          <label class="form-label">Serial numbers to dispatch</label>
+          <label class="form-label">Serial numbers to dispatch *</label>
           <input class="fi fi-mono" id="${row.id}-out-serial-field"
-            placeholder="Type or scan serial then Enter · validated against stock"
-            ${!row.product ? 'disabled' : ''} />
+            placeholder="Type or scan serial then Enter · validated against stock" />
           <div class="hint">Press Enter to add · scanned serials auto-add · unavailable shown in red</div>
           <div class="serial-area" id="${row.id}-out-tags"></div>
           <div class="hint" id="${row.id}-out-count">0 serials</div>
         </div>
       </div>
-
-      ${availCount !== null ? `<div class="hint" style="margin-top:4px;">${availCount} unit${availCount!==1?'s':''} available at this location</div>` : ''}
+      `) : ''}
     </div>`;
   }
 
@@ -407,6 +494,7 @@
     const productSel  = document.getElementById(`${rowId}-out-product`);
     const locationSel = document.getElementById(`${rowId}-out-location`);
     const serialField = document.getElementById(`${rowId}-out-serial-field`);
+    const qtyField    = document.getElementById(`${rowId}-out-qty`);
 
     if (productSel) {
       productSel.addEventListener('change', () => {
@@ -415,6 +503,7 @@
         row.product  = productSel.value;
         row.location = '';
         row.serials  = [];
+        row.qty      = '';
         renderOutRows();
       });
     }
@@ -425,7 +514,15 @@
         if (!row) return;
         row.location = locationSel.value;
         row.serials  = [];
+        row.qty      = '';
         renderOutRows();
+      });
+    }
+
+    if (qtyField) {
+      qtyField.addEventListener('input', () => {
+        const row = outRows.find(r => r.id === rowId);
+        if (row) row.qty = parseInt(qtyField.value) || '';
       });
     }
 
@@ -442,7 +539,6 @@
         (e.clipboardData||window.clipboardData).getData('text').split(/[\n,\t]+/).map(v=>v.trim()).filter(Boolean).forEach(v => _addOutSerial(rowId, v));
         serialField.value = '';
       });
-      // Scanner
       if (typeof Scanner !== 'undefined') {
         Scanner.attachToInput(serialField, (serial) => _addOutSerial(rowId, serial));
       }
@@ -492,15 +588,31 @@
 
     if (!customer) { UI.showAlert('Customer / account is required.', 'error'); return; }
 
-    // Validate all rows have product + location + at least something to dispatch
+    const map = Inventory.getInventoryMap();
+
+    // Sync qty fields and validate
     for (const row of outRows) {
+      const qtyEl = document.getElementById(`${row.id}-out-qty`);
+      if (qtyEl) row.qty = parseInt(qtyEl.value) || '';
+
       if (!row.product)  { UI.showAlert('Select a product for each row.', 'error'); return; }
       if (!row.location) { UI.showAlert(`Select a location for "${row.product}".`, 'error'); return; }
-      if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
+
+      // Determine if this row is no-serial (all NS- stock)
+      const inStock = [...(map[row.product + '||' + row.location]?.inStock || [])];
+      const isNoSerial = inStock.length > 0 && inStock.every(s => s.startsWith('NS-'));
+
+      if (isNoSerial) {
+        if (!row.qty || row.qty < 1) { UI.showAlert(`Enter a quantity to dispatch for "${row.product}".`, 'error'); return; }
+        if (row.qty > inStock.length) { UI.showAlert(`Only ${inStock.length} unit${inStock.length!==1?'s':''} of "${row.product}" available.`, 'error'); return; }
+        // Select the NS- serials to dispatch
+        row.serials = inStock.slice(0, row.qty);
+      } else {
+        if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
+      }
     }
 
     try {
-      // Dispatch each row
       let totalUnits = 0;
       outRows.forEach(row => {
         Inventory.stockOut({ customer, by, ref, serials: row.serials });
