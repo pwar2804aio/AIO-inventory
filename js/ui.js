@@ -17,16 +17,16 @@ const UI = (() => {
   // ── Dashboard ─────────────────────────────────────────────────────────
   function renderDashboard() {
     const stats    = Inventory.getStats();
-    const map      = Inventory.getInventoryMap();
     const lowItems = Inventory.getLowStockItems();
     const { movements } = DB.getData();
+    const byProduct = Inventory.getStockByProduct();
 
     document.getElementById('stats-row').innerHTML = `
       <div class="stat"><div class="stat-label">In stock</div><div class="stat-val green">${stats.inStock}</div></div>
+      <div class="stat"><div class="stat-label">In transit</div><div class="stat-val transit">${stats.inTransit}</div></div>
       <div class="stat"><div class="stat-label">Total received</div><div class="stat-val">${stats.totalIn}</div></div>
       <div class="stat"><div class="stat-label">Dispatched</div><div class="stat-val red">${stats.totalOut}</div></div>
       <div class="stat"><div class="stat-label">Product lines</div><div class="stat-val">${stats.productLines}</div></div>
-      <div class="stat"><div class="stat-label">Locations</div><div class="stat-val">${stats.locations}</div></div>
       <div class="stat"><div class="stat-label">Low stock</div><div class="stat-val amber">${stats.lowCount}</div></div>`;
 
     const lowBox = document.getElementById('low-alert-box');
@@ -35,9 +35,33 @@ const UI = (() => {
       lowBox.textContent = `⚠ Low stock: ${lowItems.map(v => `${v.product} (${v.inStock.size})`).join(', ')}`;
     } else { lowBox.style.display = 'none'; }
 
+    // Stock by product
+    const maxStock = Math.max(...byProduct.map(p => p.inStock), 1);
+    document.getElementById('dash-product-stock').innerHTML = byProduct.length
+      ? `<table class="product-stock-table">
+          <thead><tr>
+            <th style="width:28%">Product</th>
+            <th style="width:14%">Category</th>
+            <th style="width:30%">In stock</th>
+            <th style="width:14%">In transit</th>
+          </tr></thead>
+          <tbody>${byProduct.map(p => `<tr>
+            <td style="font-weight:500">${esc(p.product)}</td>
+            <td><span class="cat-badge">${esc(p.category || '—')}</span></td>
+            <td>
+              <div class="stock-bar-wrap">
+                <div class="stock-bar"><div class="stock-bar-fill" style="width:${Math.round(p.inStock / maxStock * 100)}%"></div></div>
+                <span style="font-size:13px;font-weight:600;color:var(--success-text)">${p.inStock}</span>
+              </div>
+            </td>
+            <td>${p.inTransit > 0 ? `<span class="transit-pill">✈ ${p.inTransit}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table>`
+      : '<div class="empty">No stock data yet</div>';
+
     const recent = [...movements].reverse().slice(0, 8);
     document.getElementById('dash-recent').innerHTML = recent.length
-      ? `<table><thead><tr><th style="width:38%">Product</th><th style="width:13%">Type</th><th style="width:28%">Location</th><th style="width:21%">Date</th></tr></thead><tbody>
+      ? `<table><thead><tr><th style="width:40%">Product</th><th style="width:13%">Type</th><th style="width:25%">Location</th><th style="width:22%">Date</th></tr></thead><tbody>
          ${recent.map(m => `<tr><td style="font-weight:500">${esc(m.product)}</td><td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td><td><span class="loc-badge">${esc(m.location||'—')}</span></td><td style="color:var(--text-hint)">${fmtDate(m.date)}</td></tr>`).join('')}
          </tbody></table>`
       : '<div class="empty">No movements yet</div>';
@@ -48,6 +72,7 @@ const UI = (() => {
          </tbody></table>`
       : '<div class="empty" style="padding:1rem">All products well stocked</div>';
 
+    const map = Inventory.getInventoryMap();
     const locMap = {};
     Object.values(map).forEach(v => { const l = v.location || 'Unassigned'; locMap[l] = (locMap[l] || 0) + v.inStock.size; });
     document.getElementById('dash-locations').innerHTML = Object.keys(locMap).length
@@ -55,70 +80,128 @@ const UI = (() => {
       : '<div class="empty">No location data yet</div>';
   }
 
-  // ── All Stock List ────────────────────────────────────────────────────
+  // ── In Transit ────────────────────────────────────────────────────────
+  function renderTransitList() {
+    const { shipments } = DB.getData();
+    const active = shipments.filter(s => s.status === 'in-transit').reverse();
+    const badge = document.getElementById('transit-count-badge');
+    if (badge) badge.textContent = active.length > 0 ? `(${active.length})` : '';
+
+    const container = document.getElementById('transit-list');
+    if (!container) return;
+    if (!active.length) { container.innerHTML = '<div class="empty">No active shipments</div>'; return; }
+
+    container.innerHTML = active.map(s => {
+      const totalUnits = s.products.reduce((a, p) => a + p.serials.length, 0);
+      const expectedStr = s.expectedBy ? `Expected ${new Date(s.expectedBy).toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : '';
+      return `<div class="shipment-card">
+        <div class="shipment-card-header">
+          <div>
+            <div class="shipment-card-title">${esc(s.supplier || 'Shipment')} → <span class="loc-badge">${esc(s.location || '?')}</span></div>
+            <div class="shipment-card-meta">${totalUnits} unit${totalUnits!==1?'s':''} · ${s.products.length} product${s.products.length!==1?'s':''} · Registered ${fmtDate(s.createdAt)}${expectedStr ? ' · ' + expectedStr : ''}</div>
+          </div>
+          <div class="shipment-actions">
+            <button class="btn btn-success btn-xs" data-receive="${s.id}">Receive</button>
+            <button class="btn btn-ghost btn-xs" data-cancel="${s.id}">Cancel</button>
+          </div>
+        </div>
+        <div class="shipment-products">
+          ${s.products.map(p => `<span class="shipment-product-tag"><strong>${esc(p.product)}</strong> · ${p.serials.length} unit${p.serials.length!==1?'s':''}</span>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-receive]').forEach(btn => {
+      btn.addEventListener('click', () => showReceiveModal(parseInt(btn.dataset.receive)));
+    });
+    container.querySelectorAll('[data-cancel]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Cancel this shipment? The serials will be removed.')) {
+          DB.removeShipment(parseInt(btn.dataset.cancel));
+          renderTransitList();
+          renderDashboard();
+        }
+      });
+    });
+  }
+
+  function showReceiveModal(shipmentId) {
+    const { shipments } = DB.getData();
+    const s = shipments.find(x => x.id === shipmentId);
+    if (!s) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-title">Receive shipment</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">${s.products.reduce((a,p)=>a+p.serials.length,0)} units from ${esc(s.supplier||'supplier')}</div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Confirm location *</label>
+          <input class="fi" id="modal-loc" value="${esc(s.location||'')}" placeholder="e.g. SF Warehouse" list="modal-loc-list" />
+          <datalist id="modal-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Received by</label>
+          <input class="fi" id="modal-by" placeholder="e.g. Peter Roberts" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
+          <button class="btn btn-success" id="modal-confirm-btn">Receive into stock</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('modal-cancel-btn').addEventListener('click', () => overlay.remove());
+    document.getElementById('modal-confirm-btn').addEventListener('click', () => {
+      const loc = document.getElementById('modal-loc').value.trim();
+      const by  = document.getElementById('modal-by').value.trim();
+      try {
+        Inventory.receiveShipment(shipmentId, by, loc);
+        overlay.remove();
+        renderTransitList();
+        renderDashboard();
+        showAlert(`Shipment received into stock at ${loc}`, 'success');
+      } catch (err) { showAlert(err.message, 'error'); }
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+
+  // ── All Stock (individual serials) ────────────────────────────────────
   function renderStockList() {
     const search  = (document.getElementById('inv-search').value || '').toLowerCase();
     const catF    = document.getElementById('inv-cat-filter').value;
     const locF    = document.getElementById('inv-loc-filter').value;
     const statusF = document.getElementById('inv-status-filter').value;
-    const map     = Inventory.getInventoryMap();
 
-    let rows = Object.values(map).filter(v => {
-      const ms = !search || v.product.toLowerCase().includes(search) || v.location.toLowerCase().includes(search) || v.category.toLowerCase().includes(search) || [...v.inStock].some(s => s.toLowerCase().includes(search));
-      const mc = !catF   || v.category === catF;
-      const ml = !locF   || v.location === locF;
-      const key = v.product + '||' + v.location;
-      const thr = DB.getThreshold(key);
-      const mst = !statusF
-        || (statusF === 'in'   && v.inStock.size > thr)
-        || (statusF === 'low'  && v.inStock.size > 0 && v.inStock.size <= thr)
-        || (statusF === 'zero' && v.inStock.size === 0);
+    let rows = Inventory.getAllSerialRows().filter(r => {
+      const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
+      const mc = !catF   || r.category === catF;
+      const ml = !locF   || r.location === locF;
+      const mst= !statusF|| r.status === statusF;
       return ms && mc && ml && mst;
     });
 
+    const totalCost = rows.filter(r => r.cost != null).reduce((a, r) => a + r.cost, 0);
+    const costedCount = rows.filter(r => r.cost != null).length;
+
     const tbody = document.getElementById('inv-body');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No items found</div></td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No items found</div></td></tr>'; }
+    else {
+      tbody.innerHTML = rows.map(r => `<tr>
+        <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+        <td style="font-weight:500">${esc(r.product)}</td>
+        <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
+        <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
+        <td><span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span></td>
+        <td style="font-size:12px">${r.cost != null ? '$' + r.cost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+      </tr>`).join('');
+    }
 
-    tbody.innerHTML = rows.map(v => {
-      const key       = v.product + '||' + v.location;
-      const threshold = DB.getThreshold(key);
-      const cls       = v.inStock.size === 0 ? 'b-zero' : v.inStock.size <= threshold ? 'b-low' : 'b-ok';
-      const serials   = [...v.inStock].sort();
-      const preview   = serials.slice(0, 3).join(', ') + (serials.length > 3 ? ` <button class="expand-link" data-key="${esc(key)}" data-product="${esc(v.product)}">+${serials.length - 3} more</button>` : '');
-      return `<tr>
-        <td style="font-weight:500">${esc(v.product)}</td>
-        <td><span class="cat-badge">${esc(v.category||'—')}</span></td>
-        <td><span class="loc-badge">${esc(v.location||'—')}</span></td>
-        <td><span class="badge ${cls}">${v.inStock.size}</span></td>
-        <td style="color:var(--text-muted)">${v.totalIn}</td>
-        <td style="color:var(--text-muted)">${v.totalOut}</td>
-        <td style="color:var(--text-hint)">${threshold}</td>
-        <td class="serial-mono">${preview || '—'}</td>
-      </tr>`;
-    }).join('');
-
-    // Wire expand buttons
-    tbody.querySelectorAll('.expand-link').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const key     = btn.dataset.key;
-        const product = btn.dataset.product;
-        const parts   = key.split('||');
-        const loc     = parts[1] || '';
-        const mapItem = Inventory.getInventoryMap()[key];
-        if (!mapItem) return;
-        const serials = [...mapItem.inStock].sort();
-        const panel   = document.createElement('div');
-        panel.className = 'panel';
-        panel.style.marginTop = '1rem';
-        panel.innerHTML = `<div class="panel-title">${esc(product)} — all ${serials.length} serials in stock <span style="font-weight:400;text-transform:none">${loc ? '@ ' + loc : ''}</span></div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px;">${serials.map(s => `<span class="stag stag-in">${esc(s)}</span>`).join('')}</div>`;
-        const existing = document.getElementById('serial-drilldown');
-        if (existing) existing.replaceWith(panel);
-        else document.getElementById('v-stock-list').appendChild(panel);
-        panel.id = 'serial-drilldown';
-        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    });
+    const footer = document.getElementById('inv-footer');
+    footer.textContent = rows.length
+      ? `${rows.length} serial${rows.length!==1?'s':''} shown${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${costedCount} priced)` : ''}`
+      : '';
   }
 
   function populateStockListFilters() {
@@ -130,9 +213,9 @@ const UI = (() => {
 
   // ── History ───────────────────────────────────────────────────────────
   function renderHistory() {
-    const search  = (document.getElementById('hist-search').value || '').toLowerCase();
-    const typeF   = document.getElementById('hist-type-filter').value;
-    const catF    = document.getElementById('hist-cat-filter').value;
+    const search   = (document.getElementById('hist-search').value || '').toLowerCase();
+    const typeF    = document.getElementById('hist-type-filter').value;
+    const catF     = document.getElementById('hist-cat-filter').value;
     const dateFrom = document.getElementById('hist-date-from').value;
     const dateTo   = document.getElementById('hist-date-to').value;
     const { movements } = DB.getData();
@@ -140,34 +223,24 @@ const UI = (() => {
     let rows = [...movements].reverse().filter(m => {
       const mt = !typeF  || m.type === typeF;
       const mc = !catF   || m.category === catF;
-      const ms = !search
-        || m.product.toLowerCase().includes(search)
-        || (m.customer  || '').toLowerCase().includes(search)
-        || (m.supplier  || '').toLowerCase().includes(search)
-        || (m.ref       || '').toLowerCase().includes(search)
-        || (m.location  || '').toLowerCase().includes(search)
-        || (m.receivedBy|| '').toLowerCase().includes(search)
-        || m.serials.some(s => s.toLowerCase().includes(search));
-      const mdf = !dateFrom || m.date.slice(0, 10) >= dateFrom;
-      const mdt = !dateTo   || m.date.slice(0, 10) <= dateTo;
+      const ms = !search || m.product.toLowerCase().includes(search) || (m.customer||'').toLowerCase().includes(search) || (m.supplier||'').toLowerCase().includes(search) || (m.ref||'').toLowerCase().includes(search) || (m.location||'').toLowerCase().includes(search) || (m.receivedBy||'').toLowerCase().includes(search) || m.serials.some(s => s.toLowerCase().includes(search));
+      const mdf= !dateFrom || m.date.slice(0,10) >= dateFrom;
+      const mdt= !dateTo   || m.date.slice(0,10) <= dateTo;
       return mt && mc && ms && mdf && mdt;
     });
 
-    // Summary strip
-    const totalIn  = rows.filter(m => m.type === 'IN').reduce((a, m) => a + m.serials.length, 0);
-    const totalOut = rows.filter(m => m.type === 'OUT').reduce((a, m) => a + m.serials.length, 0);
+    const totalIn  = rows.filter(m => m.type==='IN').reduce((a,m) => a+m.serials.length, 0);
+    const totalOut = rows.filter(m => m.type==='OUT').reduce((a,m) => a+m.serials.length, 0);
     document.getElementById('hist-summary').textContent = rows.length
-      ? `${rows.length} movement${rows.length !== 1 ? 's' : ''} · ${totalIn} received · ${totalOut} dispatched`
+      ? `${rows.length} movement${rows.length!==1?'s':''} · ${totalIn} received · ${totalOut} dispatched`
       : '';
 
     const tbody = document.getElementById('hist-body');
     if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No movements found</div></td></tr>'; return; }
-
     tbody.innerHTML = rows.map(m => {
-      const party   = m.type === 'IN' ? (m.supplier || '—') : (m.customer || '—');
-      const serialStr = m.serials.join(', ');
-      const preview = m.serials.slice(0, 3).join(', ') + (m.serials.length > 3 ? ` +${m.serials.length - 3}` : '');
-      return `<tr title="Serials: ${esc(serialStr)}">
+      const party   = m.type==='IN' ? (m.supplier||'—') : (m.customer||'—');
+      const preview = m.serials.slice(0,3).join(', ') + (m.serials.length>3 ? ` +${m.serials.length-3}` : '');
+      return `<tr title="${esc(m.serials.join(', '))}">
         <td style="color:var(--text-hint)">${fmtDateFull(m.date)}</td>
         <td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td>
         <td style="font-weight:500">${esc(m.product)}</td>
@@ -185,85 +258,70 @@ const UI = (() => {
     const res = document.getElementById('lookup-result');
     if (!raw || !raw.trim()) { res.innerHTML = '<div class="empty">Enter a serial number above</div>'; return; }
     const info = Inventory.getSerialInfo(raw);
-    if (info.history.length === 0) {
-      res.innerHTML = `<div class="lookup-not-found">Serial <code>${esc(info.serial)}</code> not found in any movement record.</div>`;
+    const cost = DB.getSerialCost(raw);
+    const costStr = cost != null ? `$${cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+    if (info.history.length === 0 && info.status === 'unknown') {
+      res.innerHTML = `<div class="lookup-not-found">Serial <code>${esc(info.serial)}</code> not found in any record.</div>`;
       return;
     }
-    const statusBadge = info.status === 'in-stock'
-      ? '<span class="badge b-ok">In stock</span>'
-      : '<span class="badge b-out">Dispatched</span>';
-    const lastOut = info.history.filter(m => m.type === 'OUT').slice(-1)[0];
+    const statusBadge = info.status==='in-stock' ? '<span class="badge b-ok">In stock</span>' : info.status==='in-transit' ? '<span class="badge b-transit">In transit</span>' : '<span class="badge b-out">Dispatched</span>';
+    const lastOut = info.history.filter(m=>m.type==='OUT').slice(-1)[0];
     res.innerHTML = `
       <div class="lookup-status-card">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
           <span style="font-family:var(--mono);font-size:15px;font-weight:600">${esc(info.serial)}</span>${statusBadge}
+          ${cost != null ? `<span style="font-size:12px;color:var(--text-muted)">Cost: <strong>${costStr}</strong></span>` : ''}
         </div>
-        ${info.status === 'in-stock'
-          ? `<div class="lookup-meta">
-               <div><div class="lookup-meta-label">Product</div>${esc(info.currentProduct||'—')}</div>
-               <div><div class="lookup-meta-label">Location</div><span class="loc-badge">${esc(info.currentLocation||'—')}</span></div>
-               <div><div class="lookup-meta-label">Category</div>${esc(info.currentCategory||'—')}</div>
-             </div>`
-          : `<div style="font-size:12px;color:var(--text-muted)">Last dispatched to: <strong>${esc(lastOut?.customer||'—')}</strong></div>`}
+        <div class="lookup-meta">
+          <div><div class="lookup-meta-label">Product</div>${esc(info.currentProduct||'—')}</div>
+          <div><div class="lookup-meta-label">Location</div><span class="loc-badge">${esc(info.currentLocation||'—')}</span></div>
+          <div><div class="lookup-meta-label">Category</div>${esc(info.currentCategory||'—')}</div>
+        </div>
+        ${info.status==='dispatched' && lastOut ? `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">Last dispatched to: <strong>${esc(lastOut.customer||'—')}</strong></div>` : ''}
       </div>
-      <div class="panel" style="margin-bottom:0">
-        <div class="panel-title">Full movement history</div>
-        <table>
-          <thead><tr><th style="width:18%">Date</th><th style="width:10%">Type</th><th style="width:22%">Product</th><th style="width:18%">Location</th><th style="width:18%">Party</th><th style="width:14%">Reference</th></tr></thead>
-          <tbody>${info.history.map(m => `<tr>
-            <td style="color:var(--text-hint)">${fmtDateFull(m.date)}</td>
-            <td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td>
-            <td>${esc(m.product)}</td>
-            <td><span class="loc-badge">${esc(m.location||'—')}</span></td>
-            <td>${esc(m.type==='IN'?(m.supplier||'—'):(m.customer||'—'))}</td>
-            <td style="color:var(--text-hint)">${esc(m.ref||'—')}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>`;
+      ${info.history.length ? `<div class="panel" style="margin-bottom:0">
+        <div class="panel-title">Movement history</div>
+        <table><thead><tr><th style="width:18%">Date</th><th style="width:10%">Type</th><th style="width:22%">Product</th><th style="width:18%">Location</th><th style="width:18%">Party</th><th style="width:14%">Ref</th></tr></thead>
+        <tbody>${info.history.map(m=>`<tr><td style="color:var(--text-hint)">${fmtDateFull(m.date)}</td><td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td><td>${esc(m.product)}</td><td><span class="loc-badge">${esc(m.location||'—')}</span></td><td>${esc(m.type==='IN'?(m.supplier||'—'):(m.customer||'—'))}</td><td style="color:var(--text-hint)">${esc(m.ref||'—')}</td></tr>`).join('')}</tbody></table>
+      </div>` : ''}`;
   }
 
   // ── Datalists ─────────────────────────────────────────────────────────
   function populateDataLists() {
     const set = (id, items) => { const el = document.getElementById(id); if (el) el.innerHTML = items.map(v => `<option value="${esc(v)}">`).join(''); };
     set('loc-list',      Inventory.getLocations());
+    set('tr-loc-list',   Inventory.getLocations());
     set('customer-list', Inventory.getCustomers());
   }
 
-  // ── CSV ───────────────────────────────────────────────────────────────
+  // ── CSV exports ───────────────────────────────────────────────────────
   function exportInventoryCSV() {
-    const map  = Inventory.getInventoryMap();
-    const rows = [['Product','Category','Location','In Stock','Total In','Total Out','Low Stock Threshold','Available Serials']];
-    Object.values(map).forEach(v => {
-      const key = v.product + '||' + v.location;
-      rows.push([v.product, v.category, v.location, v.inStock.size, v.totalIn, v.totalOut, DB.getThreshold(key), [...v.inStock].join(' | ')]);
+    const rows = [['Serial Number','Product','Category','Location','Status','Cost']];
+    Inventory.getAllSerialRows().forEach(r => {
+      rows.push([r.serial, r.product, r.category, r.location, r.status, r.cost != null ? r.cost : '']);
     });
-    _dlCSV(rows, 'aio_inventory.csv');
+    _dlCSV(rows, 'aio_stock.csv');
   }
 
   function exportHistoryCSV() {
     const { movements } = DB.getData();
-    const rows = [['Date','Type','Product','Category','Location','Qty','Supplier / Customer','Received By / By','Reference','Serials']];
-    [...movements].reverse().forEach(m => rows.push([
-      fmtDateFull(m.date), m.type, m.product, m.category||'', m.location||'', m.serials.length,
-      m.type==='IN'?(m.supplier||''):(m.customer||''), m.type==='IN'?(m.receivedBy||''):(m.by||''), m.ref||'', m.serials.join(' | ')
-    ]));
+    const rows = [['Date','Type','Product','Category','Location','Qty','Supplier / Customer','Received By','Reference','Serials']];
+    [...movements].reverse().forEach(m => rows.push([fmtDateFull(m.date), m.type, m.product, m.category||'', m.location||'', m.serials.length, m.type==='IN'?(m.supplier||''):(m.customer||''), m.type==='IN'?(m.receivedBy||''):(m.by||''), m.ref||'', m.serials.join(' | ')]));
     _dlCSV(rows, 'aio_history.csv');
   }
 
   function _dlCSV(rows, name) {
-    const csv  = rows.map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(',')).join('\n');
-    const a    = document.createElement('a');
-    a.href     = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    const csv = rows.map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+    const a   = document.createElement('a');
+    a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
     a.download = name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  function esc(str) {
-    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
+  function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function fmtDate(iso)     { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
   function fmtDateFull(iso) { return new Date(iso).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
 
-  return { showAlert, hideAlert, renderDashboard, renderStockList, populateStockListFilters, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
+  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
 })();
