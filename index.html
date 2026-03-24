@@ -22,7 +22,8 @@
       <button class="nav-btn" data-view="transit">In Transit</button>
       <button class="nav-btn" data-view="in">Stock In</button>
       <button class="nav-btn" data-view="out">Stock Out</button>
-      <button class="nav-btn" data-view="stock-list">All Stock</button>
+      <button class="nav-btn" data-view="stock-list">Stock Holding</button>
+      <button class="nav-btn" data-view="deployed">Stock Deployed</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
     </nav>
@@ -145,11 +146,11 @@
     </div>
   </section>
 
-  <!-- ALL STOCK -->
+  <!-- STOCK HOLDING -->
   <section id="v-stock-list" class="view" style="display:none;">
     <div class="panel">
       <div class="panel-title">
-        All stock — individual serials
+        Stock holding — units in stock &amp; in transit
         <button class="btn btn-ghost btn-sm" id="btn-export-inv">Export CSV</button>
       </div>
       <div class="search-bar">
@@ -188,6 +189,48 @@
         </table>
       </div>
       <div class="inv-footer" id="inv-footer"></div>
+    </div>
+  </section>
+
+  <!-- STOCK DEPLOYED -->
+  <section id="v-deployed" class="view" style="display:none;">
+    <div class="panel">
+      <div class="panel-title">
+        Stock deployed — units dispatched to customers
+        <button class="btn btn-ghost btn-sm" id="btn-export-deployed">Export CSV</button>
+      </div>
+      <div class="search-bar">
+        <input class="fi" id="dep-search" placeholder="Search serial, product, customer, location..." />
+        <select class="fi" id="dep-cat-filter" style="width:185px;">
+          <option value="">All categories</option>
+          <option>POS Device</option>
+          <option>Payment Device</option>
+          <option>Printer</option>
+          <option>Networking</option>
+          <option>Kiosks</option>
+          <option>Other</option>
+        </select>
+        <select class="fi" id="dep-customer-filter" style="width:185px;">
+          <option value="">All customers</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:17%">Serial number</th>
+              <th style="width:19%">Product</th>
+              <th style="width:13%">Category</th>
+              <th style="width:18%">Customer / Account</th>
+              <th style="width:12%">Dispatched by</th>
+              <th style="width:11%">Date deployed</th>
+              <th style="width:10%">Cost</th>
+            </tr>
+          </thead>
+          <tbody id="dep-body"></tbody>
+        </table>
+      </div>
+      <div class="inv-footer" id="dep-footer"></div>
     </div>
   </section>
 
