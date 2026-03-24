@@ -84,6 +84,13 @@
           <input class="fi" id="tr-expected" type="date" />
         </div>
       </div>
+      <div class="form-grid g2" style="margin-top:6px;">
+        <div class="form-group">
+          <label class="form-label" for="tr-po">PO Number <span style="font-weight:400;color:var(--text-hint)">(optional — links unit prices to this PO)</span></label>
+          <input class="fi" id="tr-po" placeholder="e.g. PO-2026-0042" list="po-list" autocomplete="off" />
+          <datalist id="po-list"></datalist>
+        </div>
+      </div>
       <div id="transit-product-rows"></div>
       <button class="btn btn-ghost btn-add-product" id="btn-add-transit-product">
         <span>+</span> Add another product
@@ -117,6 +124,13 @@
         <div class="form-group">
           <label class="form-label" for="in-received-by">Received by</label>
           <input class="fi" id="in-received-by" placeholder="e.g. Peter Roberts" />
+        </div>
+      </div>
+      <div class="form-grid g2" style="margin-top:6px;">
+        <div class="form-group">
+          <label class="form-label" for="in-po">PO Number <span style="font-weight:400;color:var(--text-hint)">(optional — locks unit prices to this PO)</span></label>
+          <input class="fi" id="in-po" placeholder="e.g. PO-2026-0042" list="po-list-in" autocomplete="off" />
+          <datalist id="po-list-in"></datalist>
         </div>
       </div>
       <div style="margin-top:10px;">
@@ -444,13 +458,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=17"></script>
-<script src="js/auth-ui.js?v=17"></script>
-<script src="js/scanner.js?v=17"></script>
-<script src="js/db.js?v=17"></script>
-<script src="js/inventory.js?v=17"></script>
-<script src="js/reports.js?v=17"></script>
-<script src="js/ui.js?v=17"></script>
-<script src="js/app.js?v=17"></script>
+<script src="js/auth.js?v=18"></script>
+<script src="js/auth-ui.js?v=18"></script>
+<script src="js/scanner.js?v=18"></script>
+<script src="js/db.js?v=18"></script>
+<script src="js/inventory.js?v=18"></script>
+<script src="js/reports.js?v=18"></script>
+<script src="js/ui.js?v=18"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>
