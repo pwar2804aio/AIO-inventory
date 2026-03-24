@@ -135,6 +135,7 @@ const Inventory = (() => {
           condition: inMv?.condition || (inMv?.used ? 'used' : ''),  // backward compat
           testedBy:  inMv?.testedBy  || '',
           testedAt:  inMv?.testedAt  || '',
+          testNotes: inMv?.testNotes || '',
           cost:      DB.getSerialCost(serial),
         });
       });
