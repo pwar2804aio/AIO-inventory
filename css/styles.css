@@ -424,3 +424,11 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 
 /* rpt-desc span inside panel-title (old markup compat) */
 .rpt-desc { font-size: 10px; font-weight: 400; color: var(--aio-purple); text-transform: none; letter-spacing: 0; }
+
+/* ── Product stock table footer ───────────────────────────────────────── */
+.product-stock-table tfoot td {
+  font-size: 12px;
+  background: var(--aio-purple-light);
+  border-top: 2px solid var(--border-md);
+  border-bottom: none;
+}
