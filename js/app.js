@@ -229,7 +229,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','lookup','history'];
+  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -239,6 +239,7 @@
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
+    if (view === 'reports')    Reports.renderAll();
     if (view === 'history')    UI.renderHistory();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        UI.populateDataLists();
@@ -281,6 +282,17 @@
     outField.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===',') { e.preventDefault(); outField.value.split(/[,\n]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerialOut); outField.value=''; }});
     outField.addEventListener('paste', e => { e.preventDefault(); (e.clipboardData||window.clipboardData).getData('text').split(/[\n,\t]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerialOut); outField.value=''; });
   }
+  bind('rpt-run',         'click', Reports.renderAll);
+  bind('rpt-clear-dates', 'click', () => {
+    document.getElementById('rpt-date-from').value = '';
+    document.getElementById('rpt-date-to').value   = '';
+    Reports.renderAll();
+  });
+  // Export buttons on each report section
+  document.querySelectorAll('[data-export]').forEach(btn => {
+    btn.addEventListener('click', () => Reports.exportReport(btn.dataset.export));
+  });
+
   bind('lookup-input','keydown', e => { if(e.key==='Enter') UI.renderLookup(document.getElementById('lookup-input').value); });
 
   // ── Helpers ───────────────────────────────────────────────────────────
