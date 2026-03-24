@@ -37,25 +37,45 @@ const UI = (() => {
 
     // Stock by product
     const maxStock = Math.max(...byProduct.map(p => p.inStock), 1);
+    const grandTotalCost  = byProduct.reduce((a, p) => a + p.totalCost, 0);
+    const grandTotalUnits = byProduct.reduce((a, p) => a + p.inStock + p.inTransit, 0);
+    const fmt$ = n => n != null && n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--text-hint)">—</span>';
+
     document.getElementById('dash-product-stock').innerHTML = byProduct.length
       ? `<table class="product-stock-table">
           <thead><tr>
-            <th style="width:28%">Product</th>
+            <th style="width:24%">Product</th>
             <th style="width:14%">Category</th>
-            <th style="width:30%">In stock</th>
-            <th style="width:14%">In transit</th>
+            <th style="width:20%">In stock</th>
+            <th style="width:10%">In transit</th>
+            <th style="width:12%">Avg cost</th>
+            <th style="width:10%">Units</th>
+            <th style="width:10%">Total value</th>
           </tr></thead>
-          <tbody>${byProduct.map(p => `<tr>
-            <td style="font-weight:500">${esc(p.product)}</td>
-            <td><span class="cat-badge">${esc(p.category || '—')}</span></td>
-            <td>
-              <div class="stock-bar-wrap">
-                <div class="stock-bar"><div class="stock-bar-fill" style="width:${Math.round(p.inStock / maxStock * 100)}%"></div></div>
-                <span style="font-size:13px;font-weight:600;color:var(--success-text)">${p.inStock}</span>
-              </div>
-            </td>
-            <td>${p.inTransit > 0 ? `<span class="transit-pill">✈ ${p.inTransit}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
-          </tr>`).join('')}</tbody>
+          <tbody>
+            ${byProduct.map(p => `<tr>
+              <td style="font-weight:500">${esc(p.product)}</td>
+              <td><span class="cat-badge">${esc(p.category || '—')}</span></td>
+              <td>
+                <div class="stock-bar-wrap">
+                  <div class="stock-bar"><div class="stock-bar-fill" style="width:${Math.round(p.inStock / maxStock * 100)}%"></div></div>
+                  <span style="font-size:13px;font-weight:600;color:var(--success-text)">${p.inStock}</span>
+                </div>
+              </td>
+              <td>${p.inTransit > 0 ? `<span class="transit-pill">✈ ${p.inTransit}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td style="font-size:12px">${fmt$(p.avgCost)}</td>
+              <td style="font-size:12px;color:var(--text-muted)">${p.costedUnits > 0 ? p.costedUnits : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(p.totalCost)}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--aio-purple-light);">
+              <td colspan="2" style="font-weight:700;font-size:12px;color:var(--text-muted);padding-top:10px;">Total</td>
+              <td style="font-weight:700;font-size:13px;color:var(--success-text);padding-top:10px;">${grandTotalUnits}</td>
+              <td colspan="3" style="padding-top:10px;"></td>
+              <td style="font-weight:700;font-size:13px;color:var(--aio-purple);padding-top:10px;">$${grandTotalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+            </tr>
+          </tfoot>
         </table>`
       : '<div class="empty">No stock data yet</div>';
 
