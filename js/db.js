@@ -77,11 +77,37 @@ const DB = (() => {
     Object.values(map).forEach(v => { if(v.product===name) v.inStock.forEach(s=>{_data.serialCosts[s.toUpperCase()]=cost;}); });
     _save();
   }
+
+  // Delete a serial from all movements (removes it from stock entirely)
+  function deleteSerial(serial) {
+    const s = serial.toUpperCase();
+    _data.movements = _data.movements.map(mv => ({
+      ...mv,
+      serials: mv.serials.filter(x => x.toUpperCase() !== s)
+    })).filter(mv => mv.serials.length > 0);
+    delete _data.serialCosts[s];
+    _save();
+  }
+
+  // Rename a serial across all movements and cost records
+  function renameSerial(oldSerial, newSerial) {
+    const o = oldSerial.toUpperCase();
+    const n = newSerial.toUpperCase();
+    _data.movements = _data.movements.map(mv => ({
+      ...mv,
+      serials: mv.serials.map(s => s.toUpperCase() === o ? n : s)
+    }));
+    if (_data.serialCosts[o] !== undefined) {
+      _data.serialCosts[n] = _data.serialCosts[o];
+      delete _data.serialCosts[o];
+    }
+    _save();
+  }
   function exportJSON()          { return JSON.stringify(_data, null, 2); }
   function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},...p}; _save(); }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
