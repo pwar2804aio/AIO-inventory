@@ -135,7 +135,13 @@
   <!-- STOCK OUT -->
   <section id="v-out" class="view" style="display:none;">
     <div class="panel">
-      <div class="panel-title">Dispatch stock</div>
+      <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Dispatch stock</span>
+        <div class="out-mode-toggle" id="out-mode-toggle">
+          <button class="out-mode-btn active" data-mode="serial">By serial number</button>
+          <button class="out-mode-btn" data-mode="browse">Browse stock</button>
+        </div>
+      </div>
       <div class="form-grid g3">
         <div class="form-group">
           <label class="form-label" for="out-customer">Customer / Account *</label>
@@ -151,13 +157,27 @@
           <input class="fi" id="out-ref" placeholder="e.g. ORDER-2026-011" />
         </div>
       </div>
-      <div class="form-group" style="margin-top:10px;">
-        <label class="form-label" for="out-serial-field">Serial numbers to dispatch *</label>
-        <input class="fi fi-mono" id="out-serial-field" placeholder="Scan or type serial then Enter — validated against current stock." style="margin-top:4px;" />
-        <div class="hint">Unavailable serials shown in red and blocked on submit.</div>
-        <div class="serial-area" id="out-tags"></div>
-        <div class="hint" id="out-serial-count">0 serials</div>
+
+      <!-- Serial mode -->
+      <div id="out-serial-mode">
+        <div class="form-group" style="margin-top:10px;">
+          <label class="form-label" for="out-serial-field">Serial numbers to dispatch *</label>
+          <input class="fi fi-mono" id="out-serial-field" placeholder="Scan or type serial then Enter — validated against current stock." style="margin-top:4px;" />
+          <div class="hint">Unavailable serials shown in red and blocked on submit.</div>
+          <div class="serial-area" id="out-tags"></div>
+          <div class="hint" id="out-serial-count">0 serials</div>
+        </div>
       </div>
+
+      <!-- Browse mode -->
+      <div id="out-browse-mode" style="display:none;">
+        <div class="form-group" style="margin-top:10px;">
+          <label class="form-label">Select product &amp; quantity from current stock</label>
+          <div id="out-browse-items"></div>
+          <div class="hint" id="out-browse-count">0 items selected</div>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="btn btn-ghost" id="btn-clear-out">Clear</button>
         <button class="btn btn-danger" id="btn-submit-out">Dispatch stock</button>
