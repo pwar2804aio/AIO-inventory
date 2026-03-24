@@ -111,18 +111,28 @@ const Inventory = (() => {
     }));
   }
 
-  // All individual serial rows for All Stock view
+  // All individual serial rows for Stock Holding view
   function getAllSerialRows() {
     const rows = [];
+    // Build a map of serial → the IN movement that put it in stock (most recent IN)
+    const serialInMovement = {};
+    DB.getData().movements.forEach(mv => {
+      if (mv.type === 'IN') {
+        mv.serials.forEach(s => { serialInMovement[s.toUpperCase()] = mv; });
+      }
+    });
+
     const map = getInventoryMap();
     Object.values(map).forEach(v => {
       [...v.inStock].sort().forEach(serial => {
+        const inMv = serialInMovement[serial.toUpperCase()];
         rows.push({
           serial,
           product:  v.product,
           category: v.category,
           location: v.location,
           status:   'in-stock',
+          used:     inMv?.used === true,
           cost:     DB.getSerialCost(serial),
         });
       });
@@ -137,6 +147,7 @@ const Inventory = (() => {
             category:   p.category,
             location:   s.location || '',
             status:     'in-transit',
+            used:       false,
             shipmentId: s.id,
             cost:       DB.getSerialCost(serial),
           });
@@ -213,6 +224,23 @@ const Inventory = (() => {
     return { serial: s, history, status, currentProduct, currentLocation, currentCategory };
   }
 
+  // Group deployed serials by product name (for dashboard)
+  function getDeployedByProduct() {
+    const map = {};
+    getDeployedSerialRows().forEach(r => {
+      if (!map[r.product]) map[r.product] = { product: r.product, category: r.category, units: 0, totalCost: 0, costedUnits: 0 };
+      map[r.product].units++;
+      if (r.cost != null) {
+        map[r.product].totalCost  += r.cost;
+        map[r.product].costedUnits++;
+      }
+    });
+    return Object.values(map).sort((a, b) => a.product.localeCompare(b.product)).map(p => ({
+      ...p,
+      avgCost: p.costedUnits > 0 ? p.totalCost / p.costedUnits : null,
+    }));
+  }
+
   // ── Stock In ─────────────────────────────────────────────────────────
   function stockIn(receipt) {
     const { supplier, location, receivedBy, products } = receipt;
@@ -264,6 +292,7 @@ const Inventory = (() => {
         type: 'IN',
         product: p.product, category: p.category, location,
         supplier: supplier || '', receivedBy: receivedBy || '',
+        used: receipt.used === true,
         serials: [...p.serials],
         date: new Date().toISOString(),
       });
@@ -422,5 +451,5 @@ const Inventory = (() => {
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
+  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
 })();
