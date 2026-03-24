@@ -132,10 +132,11 @@ const Inventory = (() => {
           category:  v.category,
           location:  v.location,
           status:    'in-stock',
-          condition: inMv?.condition || (inMv?.used ? 'used' : ''),  // backward compat
+          condition: inMv?.condition || (inMv?.used ? 'used' : ''),
           testedBy:  inMv?.testedBy  || '',
           testedAt:  inMv?.testedAt  || '',
           testNotes: inMv?.testNotes || '',
+          poNumber:  inMv?.poNumber  || DB.getSerialPO(serial) || '',
           cost:      DB.getSerialCost(serial),
         });
       });
@@ -150,8 +151,9 @@ const Inventory = (() => {
             category:   p.category,
             location:   s.location || '',
             status:     'in-transit',
-            used:       false,
+            condition:  '',
             shipmentId: s.id,
+            poNumber:   s.poNumber || DB.getSerialPO(serial) || '',
             cost:       DB.getSerialCost(serial),
           });
         });
@@ -282,20 +284,43 @@ const Inventory = (() => {
       );
     }
 
+    const poNumber = (receipt.poNumber || '').trim();
+
     products.forEach((p, i) => {
       const key = p.product + '||' + location;
       if (p.threshold !== '' && p.threshold != null) DB.setThreshold(key, parseInt(p.threshold, 10));
-      if (p.serialCosts) {
-        Object.entries(p.serialCosts).forEach(([serial, cost]) => {
-          if (cost !== '' && cost != null) DB.setSerialCost(serial, parseFloat(cost));
-        });
+
+      // Determine unit cost — PO-linked items use PO price (locked), otherwise use entered price
+      let unitCost = p.unitCost != null ? p.unitCost : null;
+      if (poNumber) {
+        const existingPOCost = DB.getPOUnitCost(poNumber, p.product);
+        if (existingPOCost != null) {
+          unitCost = existingPOCost; // use locked PO price
+        }
+        // Link every serial to this PO
+        p.serials.forEach(s => DB.setSerialPO(s, poNumber));
+        // Save/update PO record
+        const existingPO = DB.getPO(poNumber) || { poNumber, supplier: supplier || '', date: new Date().toISOString().slice(0,10), lines: [] };
+        const lineIdx = existingPO.lines.findIndex(l => l.product === p.product);
+        if (lineIdx > -1) {
+          if (unitCost != null) existingPO.lines[lineIdx].unitCost = unitCost;
+        } else if (unitCost != null) {
+          existingPO.lines.push({ product: p.product, category: p.category, unitCost });
+        }
+        DB.savePO(poNumber, existingPO);
       }
+
+      if (unitCost != null) {
+        p.serials.forEach(s => DB.setSerialCost(s, unitCost));
+      }
+
       DB.addMovement({
         id: Date.now() + Math.random(),
         type: 'IN',
         product: p.product, category: p.category, location,
         supplier: supplier || '', receivedBy: receivedBy || '',
-        condition: receipt.condition || '',   // '', 'used', 'faulty', 'needs-testing'
+        condition: receipt.condition || '',
+        poNumber: poNumber || '',
         serials: [...p.serials],
         date: new Date().toISOString(),
       });
@@ -348,21 +373,32 @@ const Inventory = (() => {
       );
     }
 
-    // Save costs
+    const poNumber = (opts.poNumber || '').trim();
+
+    // Save costs and PO links
     products.forEach(p => {
-      if (p.serialCosts) {
-        Object.entries(p.serialCosts).forEach(([serial, cost]) => {
-          if (cost !== '' && cost != null) DB.setSerialCost(serial, parseFloat(cost));
-        });
+      let unitCost = p.unitCost != null ? p.unitCost : null;
+      if (poNumber) {
+        const existingPOCost = DB.getPOUnitCost(poNumber, p.product);
+        if (existingPOCost != null) unitCost = existingPOCost;
+        p.serials.forEach(s => DB.setSerialPO(s, poNumber));
+        const existingPO = DB.getPO(poNumber) || { poNumber, supplier: supplier || '', date: new Date().toISOString().slice(0,10), lines: [] };
+        const lineIdx = existingPO.lines.findIndex(l => l.product === p.product);
+        if (lineIdx > -1) { if (unitCost != null) existingPO.lines[lineIdx].unitCost = unitCost; }
+        else if (unitCost != null) existingPO.lines.push({ product: p.product, category: p.category, unitCost });
+        DB.savePO(poNumber, existingPO);
       }
+      if (unitCost != null) p.serials.forEach(s => DB.setSerialCost(s, unitCost));
     });
+
     const shipment = {
       id:         Date.now(),
       status:     'in-transit',
       supplier:   supplier || '',
       location:   location || '',
       expectedBy: expectedBy || '',
-      products:   products.map(p => ({ product: p.product, category: p.category, serials: [...p.serials] })),
+      poNumber:   poNumber || '',
+      products:   products.map(p => ({ product: p.product, category: p.category, serials: [...p.serials], unitCost: p.unitCost })),
       createdAt:  new Date().toISOString(),
     };
     DB.addShipment(shipment);
@@ -378,11 +414,21 @@ const Inventory = (() => {
 
     shipment.products.forEach(p => {
       const key = p.product + '||' + location;
+      const poNumber = shipment.poNumber || '';
+      // Apply locked PO price if applicable
+      let unitCost = p.unitCost != null ? p.unitCost : null;
+      if (poNumber) {
+        const poCost = DB.getPOUnitCost(poNumber, p.product);
+        if (poCost != null) unitCost = poCost;
+        p.serials.forEach(s => DB.setSerialPO(s, poNumber));
+      }
+      if (unitCost != null) p.serials.forEach(s => DB.setSerialCost(s, unitCost));
       DB.addMovement({
         id: Date.now() + Math.random(),
         type: 'IN',
         product: p.product, category: p.category, location,
         supplier: shipment.supplier || '', receivedBy: receivedBy || '',
+        poNumber: poNumber,
         serials: [...p.serials],
         date: new Date().toISOString(),
         fromShipment: id,
