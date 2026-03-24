@@ -200,13 +200,41 @@ const Inventory = (() => {
     if (!location) throw new Error('Location / warehouse is required.');
     if (!products || products.length === 0) throw new Error('Add at least one product.');
 
+    // Collect all serials being received across all product rows
+    const allIncoming = [];
     products.forEach((p, i) => {
       if (!p.product)  throw new Error(`Product ${i + 1}: name is required.`);
       if (!p.category) throw new Error(`Product ${i + 1}: category is required.`);
       if (!p.serials || p.serials.length === 0) throw new Error(`Product ${i + 1} ("${p.product}"): add at least one serial number.`);
+      p.serials.forEach(s => allIncoming.push({ serial: s.toUpperCase(), productLabel: p.product }));
+    });
+
+    // Block if any serial already exists in stock holding
+    const inStock = getAvailableSerials();
+    const duplicates = allIncoming.filter(({ serial }) => inStock.has(serial));
+    if (duplicates.length > 0) {
+      throw new Error(
+        `Cannot receive — ${duplicates.length} serial${duplicates.length > 1 ? 's' : ''} already in Stock Holding: ` +
+        duplicates.map(d => d.serial).join(', ')
+      );
+    }
+
+    // Also block if serial is already in an active in-transit shipment
+    const inTransitSerials = new Set();
+    DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
+      s.products.forEach(p => p.serials.forEach(s => inTransitSerials.add(s.toUpperCase())));
+    });
+    const transitDups = allIncoming.filter(({ serial }) => inTransitSerials.has(serial));
+    if (transitDups.length > 0) {
+      throw new Error(
+        `Cannot receive — ${transitDups.length} serial${transitDups.length > 1 ? 's' : ''} already registered as In Transit: ` +
+        transitDups.map(d => d.serial).join(', ')
+      );
+    }
+
+    products.forEach((p, i) => {
       const key = p.product + '||' + location;
       if (p.threshold !== '' && p.threshold != null) DB.setThreshold(key, parseInt(p.threshold, 10));
-      // Save per-serial costs
       if (p.serialCosts) {
         Object.entries(p.serialCosts).forEach(([serial, cost]) => {
           if (cost !== '' && cost != null) DB.setSerialCost(serial, parseFloat(cost));
@@ -232,6 +260,43 @@ const Inventory = (() => {
       if (!p.category) throw new Error(`Product ${i + 1}: category is required.`);
       if (!p.serials || p.serials.length === 0) throw new Error(`Product ${i + 1}: add at least one serial number.`);
     });
+
+    // Collect all incoming serials
+    const allIncoming = products.flatMap(p => p.serials.map(s => s.toUpperCase()));
+
+    // Block if already in stock holding
+    const inStock = getAvailableSerials();
+    const stockDups = allIncoming.filter(s => inStock.has(s));
+    if (stockDups.length > 0) {
+      throw new Error(
+        `Cannot register — ${stockDups.length} serial${stockDups.length > 1 ? 's' : ''} already in Stock Holding: ` +
+        stockDups.join(', ')
+      );
+    }
+
+    // Block if already deployed
+    const deployedSet = new Set(getDeployedSerialRows().map(r => r.serial.toUpperCase()));
+    const deployedDups = allIncoming.filter(s => deployedSet.has(s));
+    if (deployedDups.length > 0) {
+      throw new Error(
+        `Cannot register — ${deployedDups.length} serial${deployedDups.length > 1 ? 's' : ''} already in Stock Deployed: ` +
+        deployedDups.join(', ')
+      );
+    }
+
+    // Block if already in another active shipment
+    const inTransitSerials = new Set();
+    DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
+      s.products.forEach(p => p.serials.forEach(s => inTransitSerials.add(s.toUpperCase())));
+    });
+    const transitDups = allIncoming.filter(s => inTransitSerials.has(s));
+    if (transitDups.length > 0) {
+      throw new Error(
+        `Cannot register — ${transitDups.length} serial${transitDups.length > 1 ? 's' : ''} already registered as In Transit: ` +
+        transitDups.join(', ')
+      );
+    }
+
     // Save costs
     products.forEach(p => {
       if (p.serialCosts) {
@@ -281,9 +346,22 @@ const Inventory = (() => {
     if (!customer) throw new Error('Customer / account is required.');
     if (!serials || serials.length === 0) throw new Error('Add at least one serial number.');
 
+    // Block if serial is already in Stock Deployed (dispatched and not returned)
+    const deployedSet = new Set(getDeployedSerialRows().map(r => r.serial.toUpperCase()));
+    const alreadyDeployed = serials.filter(s => deployedSet.has(s.toUpperCase()));
+    if (alreadyDeployed.length > 0) {
+      throw new Error(
+        `Cannot dispatch — ${alreadyDeployed.length} serial${alreadyDeployed.length > 1 ? 's' : ''} already in Stock Deployed: ` +
+        alreadyDeployed.join(', ')
+      );
+    }
+
+    // Block if serial not in current stock holding
     const avail = getAvailableSerials();
-    const bad = serials.filter(s => !avail.has(s));
-    if (bad.length > 0) throw new Error('Serials not in stock: ' + bad.join(', '));
+    const notInStock = serials.filter(s => !avail.has(s.toUpperCase()));
+    if (notInStock.length > 0) {
+      throw new Error('Serials not in Stock Holding: ' + notInStock.join(', '));
+    }
 
     const map = getInventoryMap();
     const groups = {};
