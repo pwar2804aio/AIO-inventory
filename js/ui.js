@@ -279,6 +279,7 @@ const UI = (() => {
     const catF    = document.getElementById('inv-cat-filter').value;
     const locF    = document.getElementById('inv-loc-filter').value;
     const statusF = document.getElementById('inv-status-filter').value;
+    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
 
     let rows = Inventory.getAllSerialRows().filter(r => {
       const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
@@ -288,14 +289,28 @@ const UI = (() => {
       return ms && mc && ml && mst;
     });
 
-    const totalCost = rows.filter(r => r.cost != null).reduce((a, r) => a + r.cost, 0);
+    const totalCost   = rows.filter(r => r.cost != null).reduce((a, r) => a + r.cost, 0);
     const costedCount = rows.filter(r => r.cost != null).length;
+
+    // Update table header to show/hide admin column
+    const thead = document.querySelector('#v-stock-list table thead tr');
+    if (thead) {
+      const existingAdminTh = thead.querySelector('.th-admin');
+      if (isAdmin && !existingAdminTh) {
+        const th = document.createElement('th');
+        th.className = 'th-admin';
+        th.style.width = '70px';
+        thead.appendChild(th);
+      } else if (!isAdmin && existingAdminTh) {
+        existingAdminTh.remove();
+      }
+    }
 
     const tbody = document.getElementById('inv-body');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No items found</div></td></tr>';
+      tbody.innerHTML = `<tr><td colspan="${isAdmin ? 7 : 6}"><div class="empty">No items found</div></td></tr>`;
     } else {
-      tbody.innerHTML = rows.map(r => `<tr>
+      tbody.innerHTML = rows.map(r => `<tr data-serial="${esc(r.serial)}">
         <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
         <td style="font-weight:500">${esc(r.product)}</td>
         <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
@@ -309,9 +324,13 @@ const UI = (() => {
             ? `<span class="cost-val">$${r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
             : `<span style="color:var(--text-hint);font-size:11px">+ Add cost</span>`}
         </td>
+        ${isAdmin ? `<td style="white-space:nowrap;text-align:right;">
+          <button class="btn-icon-edit" data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Edit serial number">✎</button>
+          <button class="btn-icon-del"  data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Delete this item" style="margin-left:4px;">✕</button>
+        </td>` : ''}
       </tr>`).join('');
 
-      // Inline cost editor — click to edit, propagates to ALL serials of that product
+      // Cost cell inline editor
       tbody.querySelectorAll('.cost-cell').forEach(cell => {
         cell.addEventListener('click', () => {
           if (cell.querySelector('input')) return;
@@ -335,6 +354,27 @@ const UI = (() => {
             if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
             if (e.key === 'Escape') { inp.removeEventListener('blur', save); renderStockList(); }
           });
+        });
+      });
+
+      // Admin: edit serial
+      tbody.querySelectorAll('.btn-icon-edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const oldSerial = btn.dataset.serial;
+          const product   = btn.dataset.product;
+          _showEditSerialModal(oldSerial, product);
+        });
+      });
+
+      // Admin: delete serial
+      tbody.querySelectorAll('.btn-icon-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const serial  = btn.dataset.serial;
+          const product = btn.dataset.product;
+          if (!confirm(`Delete serial "${serial}" (${product})?\n\nThis will remove it from stock permanently.`)) return;
+          DB.deleteSerial(serial);
+          renderStockList();
+          showAlert(`Serial ${serial} deleted`, 'success');
         });
       });
     }
@@ -463,6 +503,78 @@ const UI = (() => {
   function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function fmtDate(iso)     { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
   function fmtDateFull(iso) { return new Date(iso).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
+
+  // ── Admin: edit serial modal ──────────────────────────────────────────
+  function _showEditSerialModal(oldSerial, product) {
+    const existing = document.getElementById('edit-serial-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'edit-serial-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box" style="width:420px;">
+        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+          <span>Edit serial number</span>
+          <button class="btn-remove-row" id="edit-serial-close">×</button>
+        </div>
+        <div class="form-group" style="margin-bottom:6px;">
+          <label class="form-label">Product</label>
+          <div style="font-size:13px;font-weight:500;color:var(--text);padding:6px 0;">${esc(product)}</div>
+        </div>
+        <div class="form-group" style="margin-bottom:6px;">
+          <label class="form-label">Current serial</label>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--text-muted);padding:6px 0;">${esc(oldSerial)}</div>
+        </div>
+        <div class="form-group" style="margin-bottom:1.25rem;">
+          <label class="form-label">New serial number *</label>
+          <input class="fi fi-mono" id="edit-serial-input" value="${esc(oldSerial)}" placeholder="Enter correct serial number" />
+        </div>
+        <div id="edit-serial-error" style="display:none;color:var(--danger-text);font-size:12px;margin-bottom:10px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-ghost" id="edit-serial-cancel">Cancel</button>
+          <button class="btn btn-primary" id="edit-serial-save">Save</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    const input  = document.getElementById('edit-serial-input');
+    const errEl  = document.getElementById('edit-serial-error');
+    const close  = () => modal.remove();
+
+    document.getElementById('edit-serial-close').addEventListener('click', close);
+    document.getElementById('edit-serial-cancel').addEventListener('click', close);
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+
+    document.getElementById('edit-serial-save').addEventListener('click', () => {
+      const newSerial = input.value.trim().toUpperCase();
+      errEl.style.display = 'none';
+
+      if (!newSerial) { errEl.textContent = 'Serial number is required.'; errEl.style.display = 'block'; return; }
+      if (newSerial === oldSerial) { close(); return; }
+
+      // Check new serial doesn't already exist
+      const allSerials = Inventory.getAllSerialRows().map(r => r.serial.toUpperCase());
+      if (allSerials.includes(newSerial)) {
+        errEl.textContent = `Serial "${newSerial}" already exists in stock.`;
+        errEl.style.display = 'block';
+        return;
+      }
+
+      DB.renameSerial(oldSerial, newSerial);
+      close();
+      renderStockList();
+      showAlert(`Serial updated: ${oldSerial} → ${newSerial}`, 'success');
+    });
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('edit-serial-save').click();
+      if (e.key === 'Escape') close();
+    });
+  }
 
   return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
 })();
