@@ -310,35 +310,124 @@
   }
 
   // ── Stock Out ─────────────────────────────────────────────────────────
-  let serialsOut = [];
+  let serialsOut  = [];
+  let _outMode    = 'serial'; // 'serial' | 'browse'
+  let _browseQtys = {};       // { "product||location": qty }
+
   function addSerialOut(raw) {
     const v = raw.trim().toUpperCase();
     if (!v || serialsOut.includes(v)) return;
     serialsOut.push(v); renderOutTags();
   }
   function removeSerialOut(s) { serialsOut = serialsOut.filter(x => x !== s); renderOutTags(); }
+
   function renderOutTags() {
     const avail = Inventory.getAvailableSerials();
     const c = document.getElementById('out-tags');
+    if (!c) return;
     c.innerHTML = serialsOut.map(s => {
       const ok = avail.has(s);
       return `<span class="stag ${ok?'stag-out':'stag-err'}">${esc(s)}${ok?'':' ✗'}<span class="stag-x" data-serial="${esc(s)}">×</span></span>`;
     }).join('');
     c.querySelectorAll('.stag-x').forEach(x => x.addEventListener('click', () => removeSerialOut(x.dataset.serial)));
     const hasInvalid = serialsOut.some(s => !avail.has(s));
-    document.getElementById('out-serial-count').textContent = serialsOut.length + ' serial' + (serialsOut.length!==1?'s':'') + (hasInvalid ? ' — some not in stock' : '');
+    const countEl = document.getElementById('out-serial-count');
+    if (countEl) countEl.textContent = serialsOut.length + ' serial' + (serialsOut.length!==1?'s':'') + (hasInvalid ? ' — some not in stock' : '');
   }
+
+  function renderBrowseItems() {
+    const container = document.getElementById('out-browse-items');
+    if (!container) return;
+    const map = Inventory.getInventoryMap();
+    const rows = Object.values(map).filter(v => v.inStock.size > 0);
+
+    if (!rows.length) { container.innerHTML = '<div class="empty">No stock available to dispatch</div>'; return; }
+
+    container.innerHTML = rows.map(v => {
+      const key = v.product + '||' + v.location;
+      const qty = _browseQtys[key] || 0;
+      return `<div class="browse-stock-row" data-key="${esc(key)}">
+        <div class="browse-stock-info">
+          <div class="browse-stock-name">${esc(v.product)}</div>
+          <div class="browse-stock-meta"><span class="cat-badge">${esc(v.category||'—')}</span> · <span class="loc-badge">${esc(v.location||'—')}</span></div>
+        </div>
+        <div class="browse-stock-avail">${v.inStock.size} available</div>
+        <div class="browse-qty-wrap">
+          <button class="browse-qty-btn" data-key="${esc(key)}" data-action="dec">−</button>
+          <input class="browse-qty-input" type="number" min="0" max="${v.inStock.size}" value="${qty}" data-key="${esc(key)}" data-max="${v.inStock.size}" />
+          <button class="browse-qty-btn" data-key="${esc(key)}" data-action="inc" data-max="${v.inStock.size}">+</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire qty controls
+    container.querySelectorAll('.browse-qty-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key  = btn.dataset.key;
+        const max  = parseInt(btn.dataset.max || 9999);
+        const cur  = _browseQtys[key] || 0;
+        _browseQtys[key] = btn.dataset.action === 'inc' ? Math.min(cur + 1, max) : Math.max(cur - 1, 0);
+        renderBrowseItems();
+        _updateBrowseCount();
+      });
+    });
+    container.querySelectorAll('.browse-qty-input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const max = parseInt(inp.dataset.max);
+        const val = Math.max(0, Math.min(parseInt(inp.value)||0, max));
+        _browseQtys[inp.dataset.key] = val;
+        inp.value = val;
+        _updateBrowseCount();
+      });
+    });
+    _updateBrowseCount();
+  }
+
+  function _updateBrowseCount() {
+    const total = Object.values(_browseQtys).reduce((a, v) => a + v, 0);
+    const el = document.getElementById('out-browse-count');
+    if (el) el.textContent = total + ' item' + (total!==1?'s':'') + ' selected';
+  }
+
+  function setOutMode(mode) {
+    _outMode = mode;
+    document.getElementById('out-serial-mode').style.display  = mode === 'serial'  ? '' : 'none';
+    document.getElementById('out-browse-mode').style.display  = mode === 'browse'  ? '' : 'none';
+    document.querySelectorAll('.out-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    if (mode === 'browse') renderBrowseItems();
+  }
+
   function clearStockOut() {
     ['out-customer','out-by','out-ref'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-    serialsOut=[]; renderOutTags();
+    serialsOut = []; _browseQtys = {};
+    renderOutTags();
+    if (_outMode === 'browse') renderBrowseItems();
+    autoFillUser();
   }
+
   function submitStockOut() {
+    const customer = document.getElementById('out-customer').value.trim();
+    const by  = document.getElementById('out-by').value.trim();
+    const ref = document.getElementById('out-ref').value.trim();
     try {
-      const customer = document.getElementById('out-customer').value.trim();
-      Inventory.stockOut({ customer, by: document.getElementById('out-by').value.trim(), ref: document.getElementById('out-ref').value.trim(), serials: serialsOut });
-      const qty = serialsOut.length;
-      clearStockOut();
-      UI.showAlert(`${qty} unit${qty!==1?'s':''} dispatched to "${customer}"`, 'success');
+      if (_outMode === 'serial') {
+        Inventory.stockOut({ customer, by, ref, serials: serialsOut });
+        const qty = serialsOut.length;
+        clearStockOut();
+        UI.renderDashboard(); UI.showAlert(`${qty} unit${qty!==1?'s':''} dispatched to "${customer}"`, 'success');
+      } else {
+        // Browse mode — dispatch by product+qty
+        const items = Object.entries(_browseQtys)
+          .filter(([,qty]) => qty > 0)
+          .map(([key, qty]) => {
+            const [product, location] = key.split('||');
+            return { product, location, qty };
+          });
+        Inventory.stockOutByProduct({ customer, by, ref, items });
+        const total = items.reduce((a, i) => a + i.qty, 0);
+        clearStockOut();
+        UI.renderDashboard(); UI.showAlert(`${total} item${total!==1?'s':''} dispatched to "${customer}"`, 'success');
+      }
     } catch(err) { UI.showAlert(err.message, 'error'); }
   }
 
@@ -375,6 +464,11 @@
   bind('btn-export-inv',        'click', UI.exportInventoryCSV);
   bind('btn-export-deployed',   'click', UI.exportDeployedCSV);
   bind('btn-export-hist',       'click', UI.exportHistoryCSV);
+
+  // Stock Out mode toggle
+  document.querySelectorAll('.out-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setOutMode(btn.dataset.mode));
+  });
 
   bind('btn-rpt-run',      'click', Reports.render);
   bind('btn-rpt-export',   'click', Reports.exportAll);
