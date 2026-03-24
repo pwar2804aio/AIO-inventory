@@ -36,8 +36,13 @@
     <div class="stats-row" id="stats-row"></div>
     <!-- Stock by product -->
     <div class="panel" style="margin-bottom:1rem;">
-      <div class="panel-title">Stock by product</div>
+      <div class="panel-title">Stock holding by product</div>
       <div id="dash-product-stock"></div>
+    </div>
+    <!-- Deployed stock by product -->
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Stock deployed by product</div>
+      <div id="dash-deployed-stock"></div>
     </div>
     <div class="two-col">
       <div class="panel"><div class="panel-title">Recent movements</div><div id="dash-recent"></div></div>
@@ -104,6 +109,14 @@
           <label class="form-label" for="in-received-by">Received by</label>
           <input class="fi" id="in-received-by" placeholder="e.g. Peter Roberts" />
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+        <label class="used-toggle" for="in-used">
+          <input type="checkbox" id="in-used" />
+          <span class="used-toggle-track"><span class="used-toggle-thumb"></span></span>
+          <span class="used-toggle-label">Used / refurbished stock</span>
+        </label>
+        <span class="hint" style="margin-top:0;">All items in this receipt will be flagged as USED</span>
       </div>
     </div>
     <div id="product-rows"></div>
@@ -350,10 +363,10 @@
   </section>
 
 </div>
-<script src="js/db.js?v=2"></script>
-<script src="js/inventory.js?v=2"></script>
-<script src="js/reports.js?v=2"></script>
-<script src="js/ui.js?v=2"></script>
-<script src="js/app.js?v=2"></script>
+<script src="js/db.js?v=3"></script>
+<script src="js/inventory.js?v=3"></script>
+<script src="js/reports.js?v=3"></script>
+<script src="js/ui.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>
