@@ -226,16 +226,20 @@
     document.getElementById('in-supplier').value    = '';
     document.getElementById('in-loc').value         = '';
     document.getElementById('in-received-by').value = '';
+    const usedEl = document.getElementById('in-used');
+    if (usedEl) usedEl.checked = false;
     inRows = [newInRow()]; renderInRows();
   }
 
   function submitStockIn() {
     inRows.forEach(syncRowFields);
     try {
+      const used = document.getElementById('in-used')?.checked === true;
       Inventory.stockIn({
         supplier:   document.getElementById('in-supplier').value.trim(),
         location:   document.getElementById('in-loc').value.trim(),
         receivedBy: document.getElementById('in-received-by').value.trim(),
+        used,
         products:   inRows,
       });
       // Apply unit cost to all serials of each product (including existing ones)
