@@ -413,31 +413,61 @@
   function _findRow(id) { return [...inRows, ...trRows].find(r => r.id === id); }
   function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  // ── Auto-fill logged-in user into received-by / dispatched-by ─────────
+  function autoFillUser() {
+    const name = Auth.getName();
+    if (!name) return;
+    const fields = ['in-received-by', 'out-by', 'tr-received-by'];
+    fields.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el.value) el.value = name;
+    });
+  }
+
   // ── Track current view for real-time refresh ──────────────────────────
-  const _origShowView = showView;
   function showViewTracked(view) {
     _currentView = view;
-    _origShowView(view);
+    showView(view);
+    autoFillUser();
   }
-  // Re-wire nav buttons to tracked version
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    // Remove old listeners by cloning
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-    newBtn.addEventListener('click', () => showViewTracked(newBtn.dataset.view));
-  });
 
-  // ── Boot — wait for Firebase before rendering ─────────────────────────
-  // Show loading indicator
-  document.getElementById('alert-box').textContent  = '⏳ Connecting to database...';
-  document.getElementById('alert-box').className    = 'alert alert-success show';
+  // ── Boot: gate everything behind Firebase Auth ────────────────────────
+  document.getElementById('alert-box').textContent = '⏳ Loading...';
+  document.getElementById('alert-box').className   = 'alert alert-success show';
 
   inRows = [newInRow()];
   trRows = [newTrRow()];
 
-  DB.onReady(() => {
+  Auth.onReady((isLoggedIn) => {
     document.getElementById('alert-box').classList.remove('show');
-    showViewTracked('dashboard');
+
+    if (!isLoggedIn) {
+      // Show login screen — replaces entire page
+      AuthUI.showLoginScreen();
+      // When auth state changes to logged in, reload
+      return;
+    }
+
+    // User is logged in — inject user bar into header
+    AuthUI.injectUserBar();
+
+    // Re-wire nav buttons to tracked version
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      newBtn.addEventListener('click', () => showViewTracked(newBtn.dataset.view));
+    });
+
+    // Re-wire report buttons
+    bind('btn-rpt-run',    'click', () => { if (typeof Reports !== 'undefined') Reports.render(); });
+    bind('btn-rpt-export', 'click', () => { if (typeof Reports !== 'undefined') Reports.exportAll(); });
+
+    // Wait for DB then render
+    DB.onReady(() => {
+      // Apply view-only restrictions if not editor/admin
+      AuthUI.applyRoleRestrictions();
+      showViewTracked('dashboard');
+    });
   });
 
 })();
