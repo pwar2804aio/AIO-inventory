@@ -126,13 +126,19 @@ const Inventory = (() => {
     Object.values(map).forEach(v => {
       [...v.inStock].sort().forEach(serial => {
         const inMv = serialInMovement[serial.toUpperCase()];
+        // used = permanent flag (set at receipt, never cleared)
+        // condition = current servicing state (faulty, needs-testing, rma, or empty)
+        const used = inMv?.used === true || inMv?.condition === 'used';
+        // condition is the active servicing flag — 'used' alone doesn't show in servicing
+        const condition = inMv?.condition === 'used' ? '' : (inMv?.condition || '');
         rows.push({
           serial,
           product:   v.product,
           category:  v.category,
           location:  v.location,
           status:    'in-stock',
-          condition: inMv?.condition || (inMv?.used ? 'used' : ''),
+          used,
+          condition,
           testedBy:  inMv?.testedBy  || '',
           testedAt:  inMv?.testedAt  || '',
           testNotes: inMv?.testNotes || '',
@@ -314,12 +320,17 @@ const Inventory = (() => {
         p.serials.forEach(s => DB.setSerialCost(s, unitCost));
       }
 
+      const condition = receipt.condition || '';
+      // Faulty and needs-testing items are permanently marked as used
+      const isUsed = condition === 'used' || condition === 'faulty' || condition === 'needs-testing';
+
       DB.addMovement({
         id: Date.now() + Math.random(),
         type: 'IN',
         product: p.product, category: p.category, location,
         supplier: supplier || '', receivedBy: receivedBy || '',
-        condition: receipt.condition || '',
+        condition,
+        used: isUsed,          // permanent — never cleared regardless of condition changes
         poNumber: poNumber || '',
         serials: [...p.serials],
         date: new Date().toISOString(),
