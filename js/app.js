@@ -230,20 +230,21 @@
     document.getElementById('in-supplier').value    = '';
     document.getElementById('in-loc').value         = '';
     document.getElementById('in-received-by').value = '';
-    const usedEl = document.getElementById('in-used');
-    if (usedEl) usedEl.checked = false;
+    const defaultCond = document.querySelector('input[name="in-condition"][value=""]');
+    if (defaultCond) defaultCond.checked = true;
     inRows = [newInRow()]; renderInRows();
   }
 
   function submitStockIn() {
     inRows.forEach(syncRowFields);
     try {
-      const used = document.getElementById('in-used')?.checked === true;
+      const conditionEl = document.querySelector('input[name="in-condition"]:checked');
+      const condition   = conditionEl ? conditionEl.value : '';
       Inventory.stockIn({
         supplier:   document.getElementById('in-supplier').value.trim(),
         location:   document.getElementById('in-loc').value.trim(),
         receivedBy: document.getElementById('in-received-by').value.trim(),
-        used,
+        condition,
         products:   inRows,
       });
       // Apply unit cost to all serials of each product (including existing ones)
@@ -507,7 +508,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','reports','lookup','history'];
+  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','servicing','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -517,9 +518,9 @@
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
-    if (view === 'reports')    { Reports.render(); }
-    if (view === 'reports')    Reports.renderAll();
-    if (view === 'history')    UI.renderHistory();
+    if (view === 'servicing')  UI.renderServicing();
+    if (view === 'reports')    Reports.render();
+    if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); }
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
@@ -552,6 +553,9 @@
   bind('inv-cat-filter',   'change', () => UI.renderStockList());
   bind('inv-loc-filter',   'change', () => UI.renderStockList());
   bind('inv-status-filter','change', () => UI.renderStockList());
+
+  bind('svc-search',      'input',  () => UI.renderServicing());
+  bind('svc-flag-filter', 'change', () => UI.renderServicing());
 
   bind('hist-search',      'input',  () => UI.renderHistory());
   bind('hist-type-filter', 'change', () => UI.renderHistory());
