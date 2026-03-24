@@ -263,13 +263,14 @@ const Inventory = (() => {
     products.forEach((p, i) => {
       if (!p.product)  throw new Error(`Product ${i + 1}: name is required.`);
       if (!p.category) throw new Error(`Product ${i + 1}: category is required.`);
-      if (!p.serials || p.serials.length === 0) throw new Error(`Product ${i + 1} ("${p.product}"): add at least one serial number.`);
+      if (!p.serials || p.serials.length === 0) throw new Error(`Product ${i + 1} ("${p.product}"): add at least one serial number, or use the "No serial numbers" toggle.`);
       p.serials.forEach(s => allIncoming.push({ serial: s.toUpperCase(), productLabel: p.product }));
     });
 
-    // Block if any serial already exists in stock holding
+    // Block if any real serial already exists in stock holding (skip NS- placeholders)
+    const realIncoming = allIncoming.filter(({ serial }) => !serial.startsWith('NS-'));
     const inStock = getAvailableSerials();
-    const duplicates = allIncoming.filter(({ serial }) => inStock.has(serial));
+    const duplicates = realIncoming.filter(({ serial }) => inStock.has(serial));
     if (duplicates.length > 0) {
       throw new Error(
         `Cannot receive — ${duplicates.length} serial${duplicates.length > 1 ? 's' : ''} already in Stock Holding: ` +
@@ -282,7 +283,7 @@ const Inventory = (() => {
     DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
       s.products.forEach(p => p.serials.forEach(s => inTransitSerials.add(s.toUpperCase())));
     });
-    const transitDups = allIncoming.filter(({ serial }) => inTransitSerials.has(serial));
+    const transitDups = realIncoming.filter(({ serial }) => inTransitSerials.has(serial));
     if (transitDups.length > 0) {
       throw new Error(
         `Cannot receive — ${transitDups.length} serial${transitDups.length > 1 ? 's' : ''} already registered as In Transit: ` +
@@ -351,9 +352,10 @@ const Inventory = (() => {
     // Collect all incoming serials
     const allIncoming = products.flatMap(p => p.serials.map(s => s.toUpperCase()));
 
-    // Block if already in stock holding
+    // Block if already in stock holding (skip NS- placeholders)
+    const realIncoming = allIncoming.filter(s => !s.startsWith('NS-'));
     const inStock = getAvailableSerials();
-    const stockDups = allIncoming.filter(s => inStock.has(s));
+    const stockDups = realIncoming.filter(s => inStock.has(s));
     if (stockDups.length > 0) {
       throw new Error(
         `Cannot register — ${stockDups.length} serial${stockDups.length > 1 ? 's' : ''} already in Stock Holding: ` +
@@ -363,7 +365,7 @@ const Inventory = (() => {
 
     // Block if already deployed
     const deployedSet = new Set(getDeployedSerialRows().map(r => r.serial.toUpperCase()));
-    const deployedDups = allIncoming.filter(s => deployedSet.has(s));
+    const deployedDups = realIncoming.filter(s => deployedSet.has(s));
     if (deployedDups.length > 0) {
       throw new Error(
         `Cannot register — ${deployedDups.length} serial${deployedDups.length > 1 ? 's' : ''} already in Stock Deployed: ` +
@@ -376,7 +378,7 @@ const Inventory = (() => {
     DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
       s.products.forEach(p => p.serials.forEach(s => inTransitSerials.add(s.toUpperCase())));
     });
-    const transitDups = allIncoming.filter(s => inTransitSerials.has(s));
+    const transitDups = realIncoming.filter(s => inTransitSerials.has(s));
     if (transitDups.length > 0) {
       throw new Error(
         `Cannot register — ${transitDups.length} serial${transitDups.length > 1 ? 's' : ''} already registered as In Transit: ` +
