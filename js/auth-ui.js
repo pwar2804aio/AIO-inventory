@@ -39,7 +39,8 @@ const AuthUI = (() => {
 
       try {
         await Auth.signIn(email, pass);
-        // onAuthStateChanged will fire → page reloads via app.js
+        // Reload the page — this re-initialises everything with the authenticated user
+        window.location.reload();
       } catch (e) {
         btn.textContent = 'Sign in';
         btn.disabled = false;
