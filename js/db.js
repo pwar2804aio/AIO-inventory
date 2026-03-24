@@ -103,11 +103,26 @@ const DB = (() => {
     }
     _save();
   }
-  function exportJSON()          { return JSON.stringify(_data, null, 2); }
+  // Update condition flag on the IN movement for a serial (also records tester)
+  function updateSerialCondition(serial, condition, testedBy) {
+    const s = serial.toUpperCase();
+    _data.movements = _data.movements.map(mv => {
+      if (mv.type === 'IN' && mv.serials.some(x => x.toUpperCase() === s)) {
+        return {
+          ...mv,
+          condition: condition,
+          testedBy:  testedBy || mv.testedBy || '',
+          testedAt:  condition === '' ? '' : (mv.testedAt || new Date().toISOString()),
+        };
+      }
+      return mv;
+    });
+    _save();
+  }
   function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},...p}; _save(); }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
