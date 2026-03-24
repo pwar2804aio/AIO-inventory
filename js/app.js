@@ -129,6 +129,10 @@
       text.split(/[\n,\t]+/).map(v=>v.trim()).filter(Boolean).forEach(v => addSerialToRow(rowId, v, showCost));
       el.value = '';
     });
+    // Attach camera scan button
+    if (typeof Scanner !== 'undefined') {
+      Scanner.attachToInput(el, (serial) => addSerialToRow(rowId, serial, showCost));
+    }
   }
 
   // ── Wire product dropdown — auto-fills category, reveals Other input ─────
@@ -395,6 +399,15 @@
   if (outField) {
     outField.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===',') { e.preventDefault(); outField.value.split(/[,\n]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerialOut); outField.value=''; }});
     outField.addEventListener('paste', e => { e.preventDefault(); (e.clipboardData||window.clipboardData).getData('text').split(/[\n,\t]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerialOut); outField.value=''; });
+    if (typeof Scanner !== 'undefined') Scanner.attachToInput(outField, addSerialOut);
+  }
+
+  const lookupField = document.getElementById('lookup-input');
+  if (lookupField && typeof Scanner !== 'undefined') {
+    Scanner.attachToInput(lookupField, (serial) => {
+      lookupField.value = serial;
+      UI.renderLookup(serial);
+    });
   }
   bind('rpt-run',         'click', Reports.renderAll);
   bind('rpt-clear-dates', 'click', () => {
