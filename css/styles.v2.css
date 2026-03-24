@@ -659,3 +659,13 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 }
 .scanner-trigger-btn:hover  { background: var(--aio-purple); color: #fff; }
 .scanner-trigger-btn:active { transform: scale(0.95); }
+
+/* ── Scanner button: mobile only ─────────────────────────────────────── */
+.scanner-trigger-btn {
+  display: none;  /* hidden on desktop by default */
+}
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  .scanner-trigger-btn {
+    display: flex;  /* show on touch/mobile devices */
+  }
+}
