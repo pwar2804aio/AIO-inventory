@@ -104,20 +104,22 @@ const DB = (() => {
     _save();
   }
   // Update condition flag on the IN movement for a serial (also records tester)
+  // NOTE: the 'used' field is NEVER modified here — it is permanent from receipt
   function updateSerialCondition(serial, condition, testedBy, testedDate, notes) {
     const s = serial.toUpperCase();
     _data.movements = _data.movements.map(mv => {
       if (mv.type === 'IN' && mv.serials.some(x => x.toUpperCase() === s)) {
-        // Never remove 'used' — if item was used and we're clearing a test flag, keep used
+        // Preserve existing used flag unconditionally
         const prevCondition = mv.condition || '';
-        const finalCondition = condition === ''
-          ? (prevCondition === 'used' ? 'used' : '')   // preserve used on pass
-          : condition;                                   // set rma or whatever is passed
+        // If passing (condition=''), keep used flag but clear servicing condition
+        // If setting rma/faulty/needs-testing, set that condition
+        const finalCondition = condition; // caller is responsible for correct value
         return {
           ...mv,
+          used:      mv.used === true || mv.used === 'true', // always preserved
           condition: finalCondition,
           testedBy:  testedBy  || mv.testedBy  || '',
-          testedAt:  testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? '' : (mv.testedAt || new Date().toISOString())),
+          testedAt:  testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? mv.testedAt || '' : (mv.testedAt || new Date().toISOString())),
           testNotes: notes !== undefined ? notes : (mv.testNotes || ''),
         };
       }
