@@ -413,9 +413,31 @@
   function _findRow(id) { return [...inRows, ...trRows].find(r => r.id === id); }
   function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  // ── Boot ─────────────────────────────────────────────────────────────
+  // ── Track current view for real-time refresh ──────────────────────────
+  const _origShowView = showView;
+  function showViewTracked(view) {
+    _currentView = view;
+    _origShowView(view);
+  }
+  // Re-wire nav buttons to tracked version
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    // Remove old listeners by cloning
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', () => showViewTracked(newBtn.dataset.view));
+  });
+
+  // ── Boot — wait for Firebase before rendering ─────────────────────────
+  // Show loading indicator
+  document.getElementById('alert-box').textContent  = '⏳ Connecting to database...';
+  document.getElementById('alert-box').className    = 'alert alert-success show';
+
   inRows = [newInRow()];
   trRows = [newTrRow()];
-  showView('dashboard');
+
+  DB.onReady(() => {
+    document.getElementById('alert-box').classList.remove('show');
+    showViewTracked('dashboard');
+  });
 
 })();
