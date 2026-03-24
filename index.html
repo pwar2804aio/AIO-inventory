@@ -24,6 +24,7 @@
       <button class="nav-btn" data-view="out">Stock Out</button>
       <button class="nav-btn" data-view="stock-list">Stock Holding</button>
       <button class="nav-btn" data-view="deployed">Stock Deployed</button>
+      <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
     </nav>
@@ -234,6 +235,93 @@
     </div>
   </section>
 
+  <!-- REPORTS -->
+  <section id="v-reports" class="view" style="display:none;">
+
+    <!-- Date filter bar -->
+    <div class="rpt-filter-bar">
+      <span class="rpt-filter-label">Date range</span>
+      <input class="fi" id="rpt-date-from" type="date" style="width:150px;" title="From" />
+      <span style="color:var(--text-hint);font-size:13px;">to</span>
+      <input class="fi" id="rpt-date-to"   type="date" style="width:150px;" title="To" />
+      <button class="btn btn-ghost btn-sm" id="rpt-clear-dates">Clear dates</button>
+      <button class="btn btn-success btn-sm" id="rpt-run">Run reports</button>
+    </div>
+
+    <!-- R1: Total Stock Value -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Total stock holding value</div>
+          <div class="rpt-section-sub">Cost of all units currently in stock, by product</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="stock-value">Export CSV</button>
+      </div>
+      <div id="rpt-stock-value" class="rpt-body"></div>
+    </div>
+
+    <!-- R2: Value by Category -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Stock value by category</div>
+          <div class="rpt-section-sub">Total holding value broken down by product category</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="value-category">Export CSV</button>
+      </div>
+      <div id="rpt-value-category" class="rpt-body"></div>
+    </div>
+
+    <!-- R3: Category Breakdown -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Category breakdown</div>
+          <div class="rpt-section-sub">Units by category — in stock vs in transit vs deployed</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="category-breakdown">Export CSV</button>
+      </div>
+      <div id="rpt-category-breakdown" class="rpt-body"></div>
+    </div>
+
+    <!-- R4: Product Breakdown -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Product breakdown</div>
+          <div class="rpt-section-sub">Every product line — units in stock, transit, deployed and their values</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="product-breakdown">Export CSV</button>
+      </div>
+      <div id="rpt-product-breakdown" class="rpt-body"></div>
+    </div>
+
+    <!-- R5: Low Stock -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Low stock items</div>
+          <div class="rpt-section-sub">Products at or below their alert threshold</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="low-stock">Export CSV</button>
+      </div>
+      <div id="rpt-low-stock" class="rpt-body"></div>
+    </div>
+
+    <!-- R6: Deployed Cost -->
+    <div class="rpt-section">
+      <div class="rpt-section-header">
+        <div>
+          <div class="rpt-section-title">Total cost of deployed stock</div>
+          <div class="rpt-section-sub">Value of all units dispatched to customers, by customer</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-export="deployed-cost">Export CSV</button>
+      </div>
+      <div id="rpt-deployed-cost" class="rpt-body"></div>
+    </div>
+
+  </section>
+
   <!-- SERIAL LOOKUP -->
   <section id="v-lookup" class="view" style="display:none;">
     <div class="panel">
@@ -296,6 +384,7 @@
 </div>
 <script src="js/db.js"></script>
 <script src="js/inventory.js"></script>
+<script src="js/reports.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/app.js"></script>
 </body>
