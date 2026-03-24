@@ -4,8 +4,14 @@
 (() => {
 
   // ── Shared product-row builder ────────────────────────────────────────
-  // Used by both Stock In and In Transit forms
-  function buildProductRowCard(row, idx, total, removeFn, showCost) {
+  function buildProductRowCard(row, idx, total, showCost) {
+    const productOptions = Inventory.PRODUCTS.map(p =>
+      `<option value="${esc(p.name)}"${row.product === p.name ? ' selected' : ''}>${esc(p.name)}</option>`
+    ).join('');
+
+    const isOther = row.product === 'Other' || (row.product && !Inventory.PRODUCTS.find(p => p.name === row.product));
+    const autoCategory = Inventory.PRODUCTS.find(p => p.name === row.product)?.category || row.category || '';
+
     return `
     <div class="product-row-card" id="rowcard-${row.id}">
       <div class="product-row-header">
@@ -14,20 +20,34 @@
       </div>
       <div class="form-grid g3" style="margin-bottom:10px;">
         <div class="form-group" style="grid-column:span 2;">
-          <label class="form-label">Product name *</label>
-          <input class="fi" id="${row.id}-product" data-rowid="${row.id}" data-field="product"
-            value="${esc(row.product)}" placeholder="e.g. Sunmi M3, Verifone P400" list="product-list" autocomplete="off" />
-          <datalist id="product-list"></datalist>
+          <label class="form-label">Product *</label>
+          <select class="fi" id="${row.id}-product-select" data-rowid="${row.id}">
+            <option value="">Select product...</option>
+            ${productOptions}
+          </select>
+          <input class="fi fi-mono" id="${row.id}-product-custom" data-rowid="${row.id}"
+            placeholder="Enter custom product name"
+            style="margin-top:6px;display:${isOther ? 'block' : 'none'};"
+            value="${isOther && row.product !== 'Other' ? esc(row.product) : ''}" />
         </div>
         <div class="form-group">
-          <label class="form-label">Category *</label>
-          <select class="fi" id="${row.id}-category" data-rowid="${row.id}" data-field="category">
-            <option value="">Select...</option>
-            ${CATEGORIES.map(c => `<option${row.category===c?' selected':''}>${c}</option>`).join('')}
-          </select>
+          <label class="form-label">Category</label>
+          <input class="fi" id="${row.id}-category-display" value="${esc(autoCategory)}"
+            readonly style="background:var(--bg-2);color:var(--text-muted);cursor:default;"
+            placeholder="Auto-filled from product" />
         </div>
       </div>
-      ${showCost ? '' : `<div class="form-group" style="margin-bottom:10px;width:180px;">
+      ${showCost ? `
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label">Cost price per unit <span style="font-weight:400;color:var(--text-hint)">(applies to all units of this product)</span></label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:var(--text-muted);font-size:13px;">$</span>
+          <input class="fi" id="${row.id}-unit-cost" type="number" min="0" step="0.01"
+            style="width:140px;" placeholder="0.00"
+            value="${row.unitCost != null ? row.unitCost : ''}" />
+        </div>
+      </div>` : `
+      <div class="form-group" style="margin-bottom:10px;width:180px;">
         <label class="form-label">Low stock alert at</label>
         <input class="fi" id="${row.id}-threshold" data-rowid="${row.id}" data-field="threshold"
           type="number" min="0" value="${esc(row.threshold)}" placeholder="e.g. 5 (default 3)" />
@@ -36,7 +56,7 @@
         <label class="form-label">Serial numbers *</label>
         <input class="fi fi-mono" id="${row.id}-serial-field" data-rowid="${row.id}"
           placeholder="Type or scan → Enter. Paste multiple lines for bulk." />
-        <div class="hint">Enter or comma to add one · Paste a list to bulk import${showCost ? ' · Add cost per unit below' : ''}</div>
+        <div class="hint">Press Enter or comma to add · Paste a list to bulk import</div>
         <div class="serial-row-list" id="${row.id}-serial-list"></div>
         <div class="hint" id="${row.id}-count">0 serials</div>
       </div>
@@ -111,11 +131,76 @@
     });
   }
 
+  // ── Wire product dropdown — auto-fills category, reveals Other input ─────
+  function wireProductSelect(rowId, rowList) {
+    const sel    = document.getElementById(`${rowId}-product-select`);
+    const custom = document.getElementById(`${rowId}-product-custom`);
+    const catEl  = document.getElementById(`${rowId}-category-display`);
+    const costEl = document.getElementById(`${rowId}-unit-cost`);
+    if (!sel) return;
+
+    const applySelection = (val) => {
+      const row = rowList.find(r => r.id === rowId);
+      if (!row) return;
+      const isOther = val === 'Other';
+      if (custom) custom.style.display = isOther ? 'block' : 'none';
+      const productDef = Inventory.PRODUCTS.find(p => p.name === val);
+      const autoCategory = productDef?.category || '';
+      if (catEl) catEl.value = autoCategory;
+      if (!isOther) {
+        row.product  = val;
+        row.category = autoCategory;
+        // Pre-fill unit cost from existing DB cost for this product
+        if (costEl) {
+          const existingSerials = Object.values(Inventory.getInventoryMap())
+            .find(v => v.product === val)?.inStock;
+          if (existingSerials && existingSerials.size > 0) {
+            const first = [...existingSerials][0];
+            const existingCost = DB.getSerialCost(first);
+            if (existingCost != null && costEl.value === '') costEl.value = existingCost;
+          }
+        }
+      } else {
+        row.product  = custom?.value.trim() || 'Other';
+        row.category = autoCategory;
+      }
+    };
+
+    sel.addEventListener('change', () => applySelection(sel.value));
+    if (custom) {
+      custom.addEventListener('input', () => {
+        const row = rowList.find(r => r.id === rowId);
+        if (row) row.product = custom.value.trim() || 'Other';
+      });
+    }
+    if (costEl) {
+      costEl.addEventListener('change', () => {
+        const row = rowList.find(r => r.id === rowId);
+        if (!row) return;
+        const cost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+        row.unitCost = cost;
+      });
+    }
+    // Apply on initial load if product already set
+    if (sel.value) applySelection(sel.value);
+  }
+
   function syncRowFields(row) {
-    ['product','category','threshold'].forEach(f => {
-      const el = document.getElementById(`${row.id}-${f}`);
-      if (el) row[f] = el.value.trim ? el.value.trim() : el.value;
-    });
+    const sel    = document.getElementById(`${row.id}-product-select`);
+    const custom = document.getElementById(`${row.id}-product-custom`);
+    const catEl  = document.getElementById(`${row.id}-category-display`);
+    const costEl = document.getElementById(`${row.id}-unit-cost`);
+    const thrEl  = document.getElementById(`${row.id}-threshold`);
+    if (sel) {
+      if (sel.value === 'Other' && custom) {
+        row.product = custom.value.trim() || 'Other';
+      } else if (sel.value) {
+        row.product = sel.value;
+      }
+    }
+    if (catEl) row.category = catEl.value;
+    if (costEl) row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+    if (thrEl)  row.threshold = thrEl.value;
   }
 
   // ── Stock In ──────────────────────────────────────────────────────────
@@ -126,10 +211,13 @@
   function renderInRows() {
     const c = document.getElementById('product-rows');
     if (!c) return;
-    c.innerHTML = inRows.map((r, i) => buildProductRowCard(r, i, inRows.length, removeInRow, true)).join('');
-    inRows.forEach(r => { renderSerialRows(r.id, r.serials, r.serialCosts, true); wireSerialField(r.id, true); });
+    c.innerHTML = inRows.map((r, i) => buildProductRowCard(r, i, inRows.length, true)).join('');
+    inRows.forEach(r => {
+      renderSerialRows(r.id, r.serials, r.serialCosts, false); // serials don't have individual costs now
+      wireSerialField(r.id);
+      wireProductSelect(r.id, inRows);
+    });
     c.querySelectorAll('.btn-remove-row').forEach(btn => btn.addEventListener('click', () => removeInRow(btn.dataset.rowid)));
-    c.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { const r = _findRow(el.dataset.rowid); if(r) r[el.dataset.field] = el.value; }));
   }
 
   function removeInRow(id) { if (inRows.length <= 1) return; inRows = inRows.filter(r => r.id !== id); renderInRows(); }
@@ -150,6 +238,15 @@
         receivedBy: document.getElementById('in-received-by').value.trim(),
         products:   inRows,
       });
+      // Apply unit cost to all serials of each product (including existing ones)
+      inRows.forEach(row => {
+        if (row.unitCost != null) {
+          // Set cost on all serials just received
+          row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
+          // Also update all other existing serials with the same product name
+          DB.setProductCost(row.product, row.unitCost, Inventory.getInventoryMap());
+        }
+      });
       const total = inRows.reduce((a, r) => a + r.serials.length, 0);
       const loc   = document.getElementById('in-loc').value.trim();
       clearStockIn();
@@ -165,10 +262,13 @@
   function renderTrRows() {
     const c = document.getElementById('transit-product-rows');
     if (!c) return;
-    c.innerHTML = trRows.map((r, i) => buildProductRowCard(r, i, trRows.length, removeTrRow, true)).join('');
-    trRows.forEach(r => { renderSerialRows(r.id, r.serials, r.serialCosts, true); wireSerialField(r.id, true); });
+    c.innerHTML = trRows.map((r, i) => buildProductRowCard(r, i, trRows.length, true)).join('');
+    trRows.forEach(r => {
+      renderSerialRows(r.id, r.serials, r.serialCosts, false);
+      wireSerialField(r.id);
+      wireProductSelect(r.id, trRows);
+    });
     c.querySelectorAll('.btn-remove-row').forEach(btn => btn.addEventListener('click', () => removeTrRow(btn.dataset.rowid)));
-    c.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => { const r = _findRow(el.dataset.rowid); if(r) r[el.dataset.field] = el.value; }));
   }
 
   function removeTrRow(id) { if (trRows.length <= 1) return; trRows = trRows.filter(r => r.id !== id); renderTrRows(); }
@@ -186,6 +286,12 @@
         location:   document.getElementById('tr-loc').value.trim(),
         expectedBy: document.getElementById('tr-expected').value,
         products:   trRows,
+      });
+      // Apply unit cost to in-transit serials
+      trRows.forEach(row => {
+        if (row.unitCost != null) {
+          row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
+        }
       });
       const total = trRows.reduce((a, r) => a + r.serials.length, 0);
       clearTransitForm();
@@ -239,6 +345,7 @@
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
+    if (view === 'reports')    { Reports.render(); }
     if (view === 'reports')    Reports.renderAll();
     if (view === 'history')    UI.renderHistory();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
@@ -260,6 +367,9 @@
   bind('btn-export-inv',        'click', UI.exportInventoryCSV);
   bind('btn-export-deployed',   'click', UI.exportDeployedCSV);
   bind('btn-export-hist',       'click', UI.exportHistoryCSV);
+
+  bind('btn-rpt-run',      'click', Reports.render);
+  bind('btn-rpt-export',   'click', Reports.exportAll);
 
   bind('dep-search',         'input',  () => UI.renderDeployed());
   bind('dep-cat-filter',     'change', () => UI.renderDeployed());
