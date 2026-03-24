@@ -669,3 +669,70 @@ tbody tr:hover td { background: var(--aio-purple-light); }
     display: flex;  /* show on touch/mobile devices */
   }
 }
+
+/* ── Stock Out mode toggle ─────────────────────────────────────────────── */
+.out-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-md);
+  padding: 3px;
+}
+.out-mode-btn {
+  border: none;
+  background: none;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.out-mode-btn.active {
+  background: var(--aio-purple);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(95,104,188,.3);
+}
+
+/* ── Browse stock picker ───────────────────────────────────────────────── */
+.browse-stock-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: 6px;
+  background: var(--bg);
+  transition: border-color .12s;
+}
+.browse-stock-row:hover { border-color: var(--aio-purple); }
+.browse-stock-info { flex: 1; min-width: 0; }
+.browse-stock-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.browse-stock-meta { font-size: 11px; color: var(--text-hint); margin-top: 1px; }
+.browse-stock-avail { font-size: 12px; font-weight: 600; color: var(--success-text); white-space: nowrap; }
+.browse-qty-wrap { display: flex; align-items: center; gap: 6px; }
+.browse-qty-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-md);
+  background: var(--bg-2);
+  font-size: 16px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  transition: all .12s;
+}
+.browse-qty-btn:hover { background: var(--aio-purple); color: #fff; border-color: var(--aio-purple); }
+.browse-qty-input {
+  width: 48px; text-align: center;
+  font-size: 14px; font-weight: 700;
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-sm);
+  padding: 4px 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.browse-qty-input:focus { border-color: var(--aio-purple); outline: none; }
