@@ -285,7 +285,15 @@ const UI = (() => {
       const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
       const mc = !catF   || r.category === catF;
       const ml = !locF   || r.location === locF;
-      const mst= !statusF|| r.status === statusF;
+      // Status filter handles both stock status and condition flags
+      let mst = true;
+      if (statusF) {
+        if (statusF.startsWith('cond-')) {
+          mst = r.condition === statusF.replace('cond-', '');
+        } else {
+          mst = r.status === statusF;
+        }
+      }
       return ms && mc && ml && mst;
     });
 
@@ -736,7 +744,7 @@ const UI = (() => {
       if (!testedBy)   { errEl.textContent = 'Please select who tested this item.'; errEl.style.display='block'; return; }
       if (!testedDate) { errEl.textContent = 'Please enter the test date.'; errEl.style.display='block'; return; }
 
-      const newCondition = outcome === 'rma' ? 'rma' : '';
+      const newCondition = outcome === 'rma' ? 'rma' : '';  // db.js preserves USED
       DB.updateSerialCondition(serial, newCondition, testedBy, testedDate, notes);
 
       close();
@@ -749,5 +757,39 @@ const UI = (() => {
     });
   }
 
-  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, populateDataLists, exportInventoryCSV, exportHistoryCSV };
+  // ── RMA view ───────────────────────────────────────────────────────────
+  function renderRMA() {
+    const search = (document.getElementById('rma-search')?.value || '').toLowerCase();
+
+    const rows = Inventory.getAllSerialRows().filter(r => {
+      if (r.condition !== 'rma') return false;
+      return !search || r.serial.toLowerCase().includes(search)
+                     || r.product.toLowerCase().includes(search)
+                     || (r.location||'').toLowerCase().includes(search);
+    });
+
+    const tbody  = document.getElementById('rma-body');
+    const footer = document.getElementById('rma-footer');
+    if (!tbody) return;
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No RMA items — all clear</div></td></tr>';
+      if (footer) footer.textContent = '';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+      <td style="font-weight:500">${esc(r.product)}</td>
+      <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
+      <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.testedBy ? esc(r.testedBy) : '<span style="color:var(--text-hint)">—</span>'}</td>
+      <td style="font-size:11px;color:var(--text-hint)">${r.testedAt ? fmtDate(r.testedAt) : '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.testNotes||'')}">${r.testNotes ? esc(r.testNotes) : '<span style="color:var(--text-hint)">—</span>'}</td>
+    </tr>`).join('');
+
+    if (footer) footer.innerHTML = `<span style="color:var(--danger-text);font-weight:600;">${rows.length} unit${rows.length!==1?'s':''} awaiting RMA return</span> · Use <strong>Stock Out</strong> to remove from stock once returned`;
+  }
+
+  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, populateDataLists, exportInventoryCSV, exportHistoryCSV };
 })();
