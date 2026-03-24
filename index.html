@@ -256,29 +256,30 @@
   <section id="v-servicing" class="view" style="display:none;">
     <div class="panel-toolbar">
       <span class="toolbar-title">Servicing</span>
-      <span class="hint" style="margin-top:0;">Items flagged as Faulty or Needs Testing</span>
+      <span class="hint" style="margin-top:0;">Items flagged as Needs Testing, Faulty or RMA</span>
     </div>
     <div class="panel">
       <div class="search-bar">
         <input class="fi" id="svc-search" placeholder="Search serial, product, location..." />
-        <select class="fi" id="svc-flag-filter" style="width:160px;">
+        <select class="fi" id="svc-flag-filter" style="width:175px;">
           <option value="">All flags</option>
-          <option value="faulty">Faulty</option>
           <option value="needs-testing">Needs Testing</option>
-          <option value="used">Used</option>
+          <option value="faulty">Faulty</option>
+          <option value="rma">RMA</option>
         </select>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th style="width:16%">Serial</th>
-              <th style="width:22%">Product</th>
-              <th style="width:13%">Category</th>
-              <th style="width:12%">Location</th>
-              <th style="width:10%">Flag</th>
-              <th style="width:14%">Tested by</th>
-              <th style="width:13%">Tested date</th>
+              <th style="width:14%">Serial</th>
+              <th style="width:20%">Product</th>
+              <th style="width:11%">Category</th>
+              <th style="width:10%">Location</th>
+              <th style="width:9%">Flag</th>
+              <th style="width:12%">Tested by</th>
+              <th style="width:10%">Test date</th>
+              <th style="width:14%">Notes</th>
               <th style="width:0%"></th>
             </tr>
           </thead>
@@ -400,13 +401,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=13"></script>
-<script src="js/auth-ui.js?v=13"></script>
-<script src="js/scanner.js?v=13"></script>
-<script src="js/db.js?v=13"></script>
-<script src="js/inventory.js?v=13"></script>
-<script src="js/reports.js?v=13"></script>
-<script src="js/ui.js?v=13"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/auth.js?v=14"></script>
+<script src="js/auth-ui.js?v=14"></script>
+<script src="js/scanner.js?v=14"></script>
+<script src="js/db.js?v=14"></script>
+<script src="js/inventory.js?v=14"></script>
+<script src="js/reports.js?v=14"></script>
+<script src="js/ui.js?v=14"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>
