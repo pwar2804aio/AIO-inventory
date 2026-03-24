@@ -317,7 +317,7 @@ const UI = (() => {
         <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
         <td>
           <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
-          ${r.used ? '<span class="badge b-used" style="margin-left:4px;">USED</span>' : ''}
+          ${r.condition ? `<span class="badge b-condition b-cond-${r.condition}" style="margin-left:4px;">${_conditionLabel(r.condition)}</span>` : ''}
         </td>
         <td class="cost-cell" data-product="${esc(r.product)}" data-serial="${esc(r.serial)}" style="cursor:pointer;" title="Click to edit — updates all ${esc(r.product)} units">
           ${r.cost != null
@@ -385,7 +385,20 @@ const UI = (() => {
       : '';
   }
 
+  // ── Populate category dropdowns from CATEGORIES constant ─────────────
+  function populateCategoryFilters() {
+    const cats = CATEGORIES;
+    ['inv-cat-filter','dep-cat-filter','hist-cat-filter'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">All categories</option>' +
+        cats.map(c => `<option value="${esc(c)}"${c===cur?' selected':''}>${esc(c)}</option>`).join('');
+    });
+  }
+
   function populateStockListFilters() {
+    populateCategoryFilters();
     const locs = Inventory.getLocations();
     const sel  = document.getElementById('inv-loc-filter');
     const cur  = sel.value;
@@ -576,5 +589,75 @@ const UI = (() => {
     });
   }
 
-  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, populateDataLists, exportInventoryCSV, exportHistoryCSV };
+  // ── Condition flag helpers ─────────────────────────────────────────────
+  function _conditionLabel(c) {
+    return { 'used': 'USED', 'faulty': '⚠ FAULTY', 'needs-testing': '🔬 TESTING' }[c] || c.toUpperCase();
+  }
+
+  // ── Servicing view ─────────────────────────────────────────────────────
+  function renderServicing() {
+    const search  = (document.getElementById('svc-search')?.value || '').toLowerCase();
+    const flagF   = document.getElementById('svc-flag-filter')?.value || '';
+    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
+
+    const rows = Inventory.getAllSerialRows().filter(r => {
+      if (!r.condition) return false;
+      const mf = !flagF  || r.condition === flagF;
+      const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || (r.location||'').toLowerCase().includes(search);
+      return mf && ms;
+    });
+
+    const tbody = document.getElementById('svc-body');
+    const footer = document.getElementById('svc-footer');
+    if (!tbody) return;
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No flagged items found</div></td></tr>';
+      if (footer) footer.textContent = '';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+      <td style="font-weight:500">${esc(r.product)}</td>
+      <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
+      <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
+      <td><span class="badge b-condition b-cond-${r.condition}">${_conditionLabel(r.condition)}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.testedBy ? esc(r.testedBy) : '<span style="color:var(--text-hint)">—</span>'}</td>
+      <td style="font-size:11px;color:var(--text-hint)">${r.testedAt ? fmtDateFull(r.testedAt) : '—'}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        ${isAdmin ? `
+          <select class="fi svc-flag-sel" data-serial="${esc(r.serial)}" style="width:130px;padding:3px 6px;font-size:11px;margin-right:4px;">
+            <option value="used"${r.condition==='used'?' selected':''}>Used</option>
+            <option value="faulty"${r.condition==='faulty'?' selected':''}>Faulty</option>
+            <option value="needs-testing"${r.condition==='needs-testing'?' selected':''}>Needs Testing</option>
+          </select>
+          <button class="btn btn-ghost btn-xs svc-clear-btn" data-serial="${esc(r.serial)}" title="Clear flag — marks item as normal">Clear flag</button>
+        ` : ''}
+      </td>
+    </tr>`).join('');
+
+    if (footer) footer.textContent = `${rows.length} item${rows.length!==1?'s':''} flagged`;
+
+    // Wire flag change dropdown
+    tbody.querySelectorAll('.svc-flag-sel').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const userName = typeof Auth !== 'undefined' ? Auth.getName() : '';
+        DB.updateSerialCondition(sel.dataset.serial, sel.value, userName);
+        renderServicing();
+      });
+    });
+
+    // Wire clear button
+    tbody.querySelectorAll('.svc-clear-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const userName = typeof Auth !== 'undefined' ? Auth.getName() : '';
+        DB.updateSerialCondition(btn.dataset.serial, '', userName);
+        renderServicing();
+        showAlert(`Flag cleared for ${btn.dataset.serial}`, 'success');
+      });
+    });
+  }
+
+  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, populateDataLists, exportInventoryCSV, exportHistoryCSV };
 })();
