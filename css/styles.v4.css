@@ -736,3 +736,11 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   color: var(--text);
 }
 .browse-qty-input:focus { border-color: var(--aio-purple); outline: none; }
+
+/* ── html5-qrcode overrides ──────────────────────────────────────────── */
+#html5qr-scanner-div { border-radius: var(--r-md); overflow: hidden; }
+#html5qr-scanner-div video { border-radius: var(--r-md); }
+/* Hide default html5-qrcode UI chrome we don't need */
+#html5qr-scanner-div img[alt="Info icon"],
+#html5qr-scanner-div select,
+#html5qr-scanner-div span[style*="font-size:small"] { display: none !important; }
