@@ -68,7 +68,7 @@ html, body { font-family: var(--font); font-size: 14px; background: var(--bg-3);
 /* ── Header ────────────────────────────────────────────────────────── */
 .header {
   background: var(--header-bg);
-  padding: 0 1.5rem;
+  padding: 10px 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
