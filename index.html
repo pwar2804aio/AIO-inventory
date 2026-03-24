@@ -11,11 +11,21 @@
 
   <header class="header">
     <div class="logo">
-      <div class="logo-mark">AIO</div>
-      <div>
-        <div class="logo-text">Inventory System</div>
-        <div class="logo-sub">POS · Payment · Printers · Networking · Kiosks</div>
-      </div>
+      <!-- AIO wordmark SVG — extracted from aioapp.com -->
+      <svg class="logo-img" viewBox="0 0 220 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="AIO">
+        <!-- A -->
+        <path d="M0 40L14 8h8l14 32h-8.5l-2.8-7H11l-2.8 7H0zm13-13h9l-4.5-11L13 27z" fill="white"/>
+        <!-- I -->
+        <path d="M40 8h8v32h-8V8z" fill="white"/>
+        <!-- O -->
+        <path d="M54 24c0-9.4 7-17 17-17s17 7.6 17 17-7 17-17 17-17-7.6-17-17zm8 0c0 5.5 4 9.5 9 9.5s9-4 9-9.5-4-9.5-9-9.5-9 4-9 9.5z" fill="white"/>
+        <!-- App text -->
+        <path d="M100 16h4.5l-1 3c1.2-2 3-3.3 5.5-3.3 4.3 0 7 3.2 7 8s-2.7 8-7 8c-2.4 0-4.2-1.2-5.3-3v9H100V16zm8.2 12.5c2.5 0 4.3-1.9 4.3-4.8s-1.8-4.8-4.3-4.8-4.3 1.9-4.3 4.8 1.8 4.8 4.3 4.8z" fill="rgba(255,255,255,0.75)"/>
+        <path d="M119 23.7c0-4.7 3.4-8 8.1-8 4.5 0 7.9 3.1 7.9 7.8 0 .5 0 1-.1 1.5H123c.3 2.3 2 3.6 4.2 3.6 1.7 0 3-.7 3.8-1.9l3.5 2c-1.5 2.3-4 3.7-7.3 3.7-5 0-8.2-3.3-8.2-8.7zm12-1.5c-.3-2-1.8-3.3-3.9-3.3-2 0-3.5 1.2-4 3.3h7.9z" fill="rgba(255,255,255,0.75)"/>
+        <path d="M137 16h4.5l-1 3c1.2-2 3-3.3 5.5-3.3 4.3 0 7 3.2 7 8s-2.7 8-7 8c-2.4 0-4.2-1.2-5.3-3v9H137V16zm8.2 12.5c2.5 0 4.3-1.9 4.3-4.8s-1.8-4.8-4.3-4.8-4.3 1.9-4.3 4.8 1.8 4.8 4.3 4.8z" fill="rgba(255,255,255,0.75)"/>
+      </svg>
+      <div class="logo-divider"></div>
+      <span class="logo-label">Inventory</span>
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-view="dashboard">Dashboard</button>
@@ -24,6 +34,7 @@
       <button class="nav-btn" data-view="out">Stock Out</button>
       <button class="nav-btn" data-view="stock-list">Stock Holding</button>
       <button class="nav-btn" data-view="deployed">Stock Deployed</button>
+      <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
@@ -53,7 +64,7 @@
     <!-- New shipment form -->
     <div class="panel-toolbar">
       <span class="toolbar-title">In Transit</span>
-      <button class="btn btn-success" id="btn-submit-transit">Register shipment</button>
+      <button class="btn btn-orange" id="btn-submit-transit">Register shipment</button>
     </div>
     <div class="panel" id="transit-form-panel" style="margin-bottom:1rem;">
       <div class="panel-title">New shipment</div>
@@ -88,7 +99,7 @@
   <section id="v-in" class="view" style="display:none;">
     <div class="panel-toolbar">
       <span class="toolbar-title">Receive stock</span>
-      <button class="btn btn-success" id="btn-submit-in">Receive all into stock</button>
+      <button class="btn btn-orange" id="btn-submit-in">Receive all into stock</button>
     </div>
     <div class="panel" style="margin-bottom:1rem;">
       <div class="panel-title">Receipt details</div>
@@ -318,6 +329,74 @@
         <button class="btn btn-ghost btn-sm" data-export="deployed-cost">Export CSV</button>
       </div>
       <div id="rpt-deployed-cost" class="rpt-body"></div>
+    </div>
+
+  </section>
+
+  <!-- REPORTS -->
+  <section id="v-reports" class="view" style="display:none;">
+
+    <!-- Toolbar -->
+    <div class="rpt-toolbar">
+      <span class="toolbar-title">Reports</span>
+      <div class="rpt-controls">
+        <div class="rpt-date-group">
+          <label class="form-label" style="white-space:nowrap;">Date range</label>
+          <input class="fi" id="rpt-date-from" type="date" style="width:145px;" placeholder="From" />
+          <span style="color:var(--text-hint);font-size:12px;">to</span>
+          <input class="fi" id="rpt-date-to"   type="date" style="width:145px;" placeholder="To" />
+          <button class="btn btn-ghost btn-sm" id="btn-rpt-run">Run report</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-rpt-export">Export all CSV</button>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="rpt-summary" class="rpt-cards-wrap"></div>
+
+    <!-- Value by category -->
+    <div class="panel">
+      <div class="panel-title">
+        Stock value by category
+        <span class="rpt-desc">Holding stock only · cost required per serial</span>
+      </div>
+      <div id="rpt-by-category"></div>
+    </div>
+
+    <!-- Value by product -->
+    <div class="panel">
+      <div class="panel-title">
+        Stock value by product
+        <span class="rpt-desc">Ranked by total value · holding stock only</span>
+      </div>
+      <div id="rpt-by-product"></div>
+    </div>
+
+    <!-- Holding cost by location -->
+    <div class="panel">
+      <div class="panel-title">
+        Holding cost by location
+        <span class="rpt-desc">Total value of stock at each warehouse / location</span>
+      </div>
+      <div id="rpt-by-location"></div>
+    </div>
+
+    <!-- Low stock -->
+    <div class="panel">
+      <div class="panel-title">
+        Low stock items
+        <span class="rpt-desc">Products at or below their alert threshold</span>
+      </div>
+      <div id="rpt-low-stock"></div>
+    </div>
+
+    <!-- Deployed by customer -->
+    <div class="panel">
+      <div class="panel-title">
+        Deployed stock value by customer
+        <span class="rpt-desc">Total cost value of stock currently deployed per account</span>
+      </div>
+      <div id="rpt-by-customer"></div>
     </div>
 
   </section>
