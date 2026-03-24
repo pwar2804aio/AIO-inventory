@@ -435,15 +435,12 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 
 /* ── USED badge ───────────────────────────────────────────────────────── */
 .b-used {
-  background: #fff0ea;
-  color: #c45320;
-  border: 1px solid #F4733B;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
   font-size: 9px;
   padding: 1px 5px;
   letter-spacing: .06em;
-}
-@media (prefers-color-scheme: dark) {
-  .b-used { background: #2a1200; color: #f4933b; border-color: #c45320; }
 }
 
 /* ── USED toggle (receipt details) ───────────────────────────────────── */
@@ -463,7 +460,7 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   transition: background .2s;
   flex-shrink: 0;
 }
-.used-toggle input:checked + .used-toggle-track { background: var(--aio-orange); }
+.used-toggle input:checked + .used-toggle-track { background: var(--danger-border); }
 .used-toggle-thumb {
   width: 14px; height: 14px;
   background: white;
