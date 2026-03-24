@@ -201,3 +201,73 @@ tbody tr:hover td { background: var(--bg-2); }
 .lookup-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 12px; margin-top: 10px; }
 .lookup-meta-label { font-size: 10px; color: var(--text-hint); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
 .lookup-not-found { background: var(--danger-bg); color: var(--danger-text); border: 0.5px solid var(--danger-border); border-radius: var(--r-md); padding: 12px 16px; font-size: 13px; }
+
+/* ── Reports ──────────────────────────────────────────────────────────── */
+.rpt-filter-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--r-lg);
+  padding: 1rem 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow);
+}
+.rpt-filter-label { font-size: 12px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+
+.rpt-section {
+  background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--r-lg);
+  margin-bottom: 1.25rem; box-shadow: var(--shadow); overflow: hidden;
+}
+.rpt-section-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 1rem 1.25rem; border-bottom: 0.5px solid var(--border);
+  background: var(--bg-2);
+}
+.rpt-section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.rpt-section-sub   { font-size: 11px; color: var(--text-hint); margin-top: 2px; }
+.rpt-body { padding: 1.25rem; }
+
+/* Summary cards */
+.rpt-summary-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 1.5rem;
+}
+.rpt-card {
+  background: var(--bg-2); border: 0.5px solid var(--border);
+  border-radius: var(--r-md); padding: 12px 14px;
+}
+.rpt-card-green { border-color: var(--success-border); background: var(--success-bg); }
+.rpt-card-red   { border-color: var(--danger-border);  background: var(--danger-bg); }
+.rpt-card-amber { border-color: var(--warning-border); background: var(--warning-bg); }
+.rpt-card-label { font-size: 10px; color: var(--text-hint); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.rpt-card-val   { font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.1; margin-bottom: 3px; }
+.rpt-card-sub   { font-size: 11px; color: var(--text-muted); }
+
+/* Chart labels */
+.rpt-chart-label { font-size: 11px; font-weight: 600; color: var(--text-hint); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+
+/* Bar charts */
+.rpt-bar-chart { display: flex; flex-direction: column; gap: 7px; margin-bottom: 1.5rem; }
+.rpt-stacked-chart { display: flex; flex-direction: column; gap: 7px; margin-bottom: 1.5rem; }
+.rpt-bar-row   { display: flex; align-items: center; gap: 10px; }
+.rpt-bar-name  { width: 160px; font-size: 12px; color: var(--text); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-bar-track { flex: 1; height: 18px; background: var(--bg-3); border-radius: 4px; overflow: hidden; position: relative; }
+.rpt-bar-fill  { height: 100%; border-radius: 4px; transition: width .3s ease; display: block; }
+.rpt-bar-val   { width: 130px; font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; flex-shrink: 0; }
+.rpt-bar-units { font-weight: 400; color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+
+/* Colour fills */
+.rpt-fill-green  { background: var(--success-text); }
+.rpt-fill-blue   { background: var(--info-text); }
+.rpt-fill-amber  { background: var(--warning-text); }
+.rpt-fill-coral  { background: #d85a30; }
+.rpt-fill-teal   { background: #1d9e75; }
+.rpt-fill-purple { background: #7f77dd; }
+
+/* Legend */
+.rpt-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); margin-bottom: 12px; flex-wrap: wrap; }
+.rpt-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+/* Report tables */
+.rpt-table-wrap { overflow-x: auto; }
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rpt-table th { text-align: left; padding: 6px 10px; font-size: 10px; font-weight: 600; color: var(--text-hint); text-transform: uppercase; letter-spacing: .05em; border-bottom: 0.5px solid var(--border-md); background: var(--bg-2); }
+.rpt-table td { padding: 9px 10px; border-bottom: 0.5px solid var(--border); color: var(--text); vertical-align: middle; }
+.rpt-table tr:last-child td { border-bottom: none; }
+.rpt-table tbody tr:hover td { background: var(--bg-2); }
