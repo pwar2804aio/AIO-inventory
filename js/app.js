@@ -310,124 +310,199 @@
   }
 
   // ── Stock Out ─────────────────────────────────────────────────────────
-  let serialsOut  = [];
-  let _outMode    = 'serial'; // 'serial' | 'browse'
-  let _browseQtys = {};       // { "product||location": qty }
+  let outRows = [];
+  let _outCounter = 0;
 
-  function addSerialOut(raw) {
-    const v = raw.trim().toUpperCase();
-    if (!v || serialsOut.includes(v)) return;
-    serialsOut.push(v); renderOutTags();
-  }
-  function removeSerialOut(s) { serialsOut = serialsOut.filter(x => x !== s); renderOutTags(); }
-
-  function renderOutTags() {
-    const avail = Inventory.getAvailableSerials();
-    const c = document.getElementById('out-tags');
-    if (!c) return;
-    c.innerHTML = serialsOut.map(s => {
-      const ok = avail.has(s);
-      return `<span class="stag ${ok?'stag-out':'stag-err'}">${esc(s)}${ok?'':' ✗'}<span class="stag-x" data-serial="${esc(s)}">×</span></span>`;
-    }).join('');
-    c.querySelectorAll('.stag-x').forEach(x => x.addEventListener('click', () => removeSerialOut(x.dataset.serial)));
-    const hasInvalid = serialsOut.some(s => !avail.has(s));
-    const countEl = document.getElementById('out-serial-count');
-    if (countEl) countEl.textContent = serialsOut.length + ' serial' + (serialsOut.length!==1?'s':'') + (hasInvalid ? ' — some not in stock' : '');
+  function newOutRow() {
+    return { id: 'out' + (++_outCounter), product: '', location: '', serials: [], serialCosts: {}, useSerials: true };
   }
 
-  function renderBrowseItems() {
-    const container = document.getElementById('out-browse-items');
-    if (!container) return;
+  function buildOutRowCard(row, idx, total) {
     const map = Inventory.getInventoryMap();
-    const rows = Object.values(map).filter(v => v.inStock.size > 0);
 
-    if (!rows.length) { container.innerHTML = '<div class="empty">No stock available to dispatch</div>'; return; }
+    // Build product options from current stock only
+    const stockedProducts = [...new Set(Object.values(map).map(v => v.product))].sort();
+    const productOptions = stockedProducts.map(p =>
+      `<option value="${esc(p)}"${row.product === p ? ' selected' : ''}>${esc(p)}</option>`
+    ).join('');
 
-    container.innerHTML = rows.map(v => {
-      const key = v.product + '||' + v.location;
-      const qty = _browseQtys[key] || 0;
-      return `<div class="browse-stock-row" data-key="${esc(key)}">
-        <div class="browse-stock-info">
-          <div class="browse-stock-name">${esc(v.product)}</div>
-          <div class="browse-stock-meta"><span class="cat-badge">${esc(v.category||'—')}</span> · <span class="loc-badge">${esc(v.location||'—')}</span></div>
+    // Location options for selected product
+    const locationsForProduct = row.product
+      ? Object.values(map).filter(v => v.product === row.product && v.inStock.size > 0).map(v => v.location)
+      : [];
+    const locationOptions = locationsForProduct.map(l =>
+      `<option value="${esc(l)}"${row.location === l ? ' selected' : ''}>${esc(l)} (${map[row.product + '||' + l]?.inStock.size || 0} in stock)</option>`
+    ).join('');
+
+    const availCount = row.product && row.location
+      ? (map[row.product + '||' + row.location]?.inStock.size || 0)
+      : null;
+
+    return `
+    <div class="product-row-card" id="out-rowcard-${row.id}">
+      <div class="product-row-header">
+        <span class="product-row-num">Product ${idx + 1}</span>
+        ${total > 1 ? `<button class="btn-remove-row" data-outrowid="${row.id}">×</button>` : ''}
+      </div>
+      <div class="form-grid g3" style="margin-bottom:12px;">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Product *</label>
+          <select class="fi" id="${row.id}-out-product">
+            <option value="">Select product from stock...</option>
+            ${productOptions}
+          </select>
         </div>
-        <div class="browse-stock-avail">${v.inStock.size} available</div>
-        <div class="browse-qty-wrap">
-          <button class="browse-qty-btn" data-key="${esc(key)}" data-action="dec">−</button>
-          <input class="browse-qty-input" type="number" min="0" max="${v.inStock.size}" value="${qty}" data-key="${esc(key)}" data-max="${v.inStock.size}" />
-          <button class="browse-qty-btn" data-key="${esc(key)}" data-action="inc" data-max="${v.inStock.size}">+</button>
+        <div class="form-group">
+          <label class="form-label">Location *</label>
+          <select class="fi" id="${row.id}-out-location" ${!row.product ? 'disabled' : ''}>
+            <option value="">Select location...</option>
+            ${locationOptions}
+          </select>
         </div>
-      </div>`;
-    }).join('');
+      </div>
 
-    // Wire qty controls
-    container.querySelectorAll('.browse-qty-btn').forEach(btn => {
+      <!-- Serial numbers (shown when product has serials) -->
+      <div id="${row.id}-out-serials-section">
+        <div class="form-group">
+          <label class="form-label">Serial numbers to dispatch</label>
+          <input class="fi fi-mono" id="${row.id}-out-serial-field"
+            placeholder="Type or scan serial then Enter · validated against stock"
+            ${!row.product ? 'disabled' : ''} />
+          <div class="hint">Press Enter to add · scanned serials auto-add · unavailable shown in red</div>
+          <div class="serial-area" id="${row.id}-out-tags"></div>
+          <div class="hint" id="${row.id}-out-count">0 serials</div>
+        </div>
+      </div>
+
+      ${availCount !== null ? `<div class="hint" style="margin-top:4px;">${availCount} unit${availCount!==1?'s':''} available at this location</div>` : ''}
+    </div>`;
+  }
+
+  function renderOutRows() {
+    const c = document.getElementById('out-product-rows');
+    if (!c) return;
+    c.innerHTML = outRows.map((r, i) => buildOutRowCard(r, i, outRows.length)).join('');
+
+    outRows.forEach(row => {
+      // Re-render existing serial tags
+      _renderOutTags(row.id);
+      _wireOutRow(row.id);
+    });
+    c.querySelectorAll('.btn-remove-row').forEach(btn => {
       btn.addEventListener('click', () => {
-        const key  = btn.dataset.key;
-        const max  = parseInt(btn.dataset.max || 9999);
-        const cur  = _browseQtys[key] || 0;
-        _browseQtys[key] = btn.dataset.action === 'inc' ? Math.min(cur + 1, max) : Math.max(cur - 1, 0);
-        renderBrowseItems();
-        _updateBrowseCount();
+        if (outRows.length <= 1) return;
+        outRows = outRows.filter(r => r.id !== btn.dataset.outrowid);
+        renderOutRows();
       });
     });
-    container.querySelectorAll('.browse-qty-input').forEach(inp => {
-      inp.addEventListener('input', () => {
-        const max = parseInt(inp.dataset.max);
-        const val = Math.max(0, Math.min(parseInt(inp.value)||0, max));
-        _browseQtys[inp.dataset.key] = val;
-        inp.value = val;
-        _updateBrowseCount();
+  }
+
+  function _wireOutRow(rowId) {
+    const productSel  = document.getElementById(`${rowId}-out-product`);
+    const locationSel = document.getElementById(`${rowId}-out-location`);
+    const serialField = document.getElementById(`${rowId}-out-serial-field`);
+
+    if (productSel) {
+      productSel.addEventListener('change', () => {
+        const row = outRows.find(r => r.id === rowId);
+        if (!row) return;
+        row.product  = productSel.value;
+        row.location = '';
+        row.serials  = [];
+        renderOutRows();
+      });
+    }
+
+    if (locationSel) {
+      locationSel.addEventListener('change', () => {
+        const row = outRows.find(r => r.id === rowId);
+        if (!row) return;
+        row.location = locationSel.value;
+        row.serials  = [];
+        renderOutRows();
+      });
+    }
+
+    if (serialField) {
+      serialField.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          serialField.value.split(/[,\n]+/).map(v => v.trim()).filter(Boolean).forEach(v => _addOutSerial(rowId, v));
+          serialField.value = '';
+        }
+      });
+      serialField.addEventListener('paste', e => {
+        e.preventDefault();
+        (e.clipboardData||window.clipboardData).getData('text').split(/[\n,\t]+/).map(v=>v.trim()).filter(Boolean).forEach(v => _addOutSerial(rowId, v));
+        serialField.value = '';
+      });
+      // Scanner
+      if (typeof Scanner !== 'undefined') {
+        Scanner.attachToInput(serialField, (serial) => _addOutSerial(rowId, serial));
+      }
+    }
+  }
+
+  function _addOutSerial(rowId, raw) {
+    const v = raw.trim().toUpperCase();
+    if (!v) return;
+    const row = outRows.find(r => r.id === rowId);
+    if (!row || row.serials.includes(v)) return;
+    row.serials.push(v);
+    _renderOutTags(rowId);
+  }
+
+  function _renderOutTags(rowId) {
+    const row   = outRows.find(r => r.id === rowId);
+    const c     = document.getElementById(`${rowId}-out-tags`);
+    const countEl = document.getElementById(`${rowId}-out-count`);
+    if (!row || !c) return;
+    const avail = Inventory.getAvailableSerials();
+    c.innerHTML = row.serials.map(s => {
+      const ok = avail.has(s);
+      return `<span class="stag ${ok?'stag-out':'stag-err'}">${esc(s)}${ok?'':' ✗'}<span class="stag-x" data-rowid="${rowId}" data-serial="${esc(s)}">×</span></span>`;
+    }).join('');
+    c.querySelectorAll('.stag-x').forEach(x => {
+      x.addEventListener('click', () => {
+        const r = outRows.find(r => r.id === x.dataset.rowid);
+        if (r) { r.serials = r.serials.filter(s => s !== x.dataset.serial); _renderOutTags(rowId); }
       });
     });
-    _updateBrowseCount();
-  }
-
-  function _updateBrowseCount() {
-    const total = Object.values(_browseQtys).reduce((a, v) => a + v, 0);
-    const el = document.getElementById('out-browse-count');
-    if (el) el.textContent = total + ' item' + (total!==1?'s':'') + ' selected';
-  }
-
-  function setOutMode(mode) {
-    _outMode = mode;
-    document.getElementById('out-serial-mode').style.display  = mode === 'serial'  ? '' : 'none';
-    document.getElementById('out-browse-mode').style.display  = mode === 'browse'  ? '' : 'none';
-    document.querySelectorAll('.out-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-    if (mode === 'browse') renderBrowseItems();
+    const invalid = row.serials.filter(s => !avail.has(s)).length;
+    if (countEl) countEl.textContent = row.serials.length + ' serial' + (row.serials.length!==1?'s':'') + (invalid ? ` — ${invalid} not in stock` : '');
   }
 
   function clearStockOut() {
     ['out-customer','out-by','out-ref'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
-    serialsOut = []; _browseQtys = {};
-    renderOutTags();
-    if (_outMode === 'browse') renderBrowseItems();
+    outRows = [newOutRow()];
+    renderOutRows();
     autoFillUser();
   }
 
   function submitStockOut() {
     const customer = document.getElementById('out-customer').value.trim();
-    const by  = document.getElementById('out-by').value.trim();
-    const ref = document.getElementById('out-ref').value.trim();
+    const by       = document.getElementById('out-by').value.trim();
+    const ref      = document.getElementById('out-ref').value.trim();
+
+    if (!customer) { UI.showAlert('Customer / account is required.', 'error'); return; }
+
+    // Validate all rows have product + location + at least something to dispatch
+    for (const row of outRows) {
+      if (!row.product)  { UI.showAlert('Select a product for each row.', 'error'); return; }
+      if (!row.location) { UI.showAlert(`Select a location for "${row.product}".`, 'error'); return; }
+      if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
+    }
+
     try {
-      if (_outMode === 'serial') {
-        Inventory.stockOut({ customer, by, ref, serials: serialsOut });
-        const qty = serialsOut.length;
-        clearStockOut();
-        UI.renderDashboard(); UI.showAlert(`${qty} unit${qty!==1?'s':''} dispatched to "${customer}"`, 'success');
-      } else {
-        // Browse mode — dispatch by product+qty
-        const items = Object.entries(_browseQtys)
-          .filter(([,qty]) => qty > 0)
-          .map(([key, qty]) => {
-            const [product, location] = key.split('||');
-            return { product, location, qty };
-          });
-        Inventory.stockOutByProduct({ customer, by, ref, items });
-        const total = items.reduce((a, i) => a + i.qty, 0);
-        clearStockOut();
-        UI.renderDashboard(); UI.showAlert(`${total} item${total!==1?'s':''} dispatched to "${customer}"`, 'success');
-      }
+      // Dispatch each row
+      let totalUnits = 0;
+      outRows.forEach(row => {
+        Inventory.stockOut({ customer, by, ref, serials: row.serials });
+        totalUnits += row.serials.length;
+      });
+      clearStockOut();
+      UI.renderDashboard();
+      UI.showAlert(`${totalUnits} unit${totalUnits!==1?'s':''} dispatched to "${customer}"`, 'success');
     } catch(err) { UI.showAlert(err.message, 'error'); }
   }
 
@@ -446,7 +521,7 @@
     if (view === 'reports')    Reports.renderAll();
     if (view === 'history')    UI.renderHistory();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
-    if (view === 'out')        UI.populateDataLists();
+    if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); }
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
   }
 
@@ -457,18 +532,13 @@
 
   bind('btn-add-product',       'click', () => { inRows.push(newInRow()); renderInRows(); });
   bind('btn-add-transit-product','click',() => { trRows.push(newTrRow()); renderTrRows(); });
+  bind('btn-add-out-product',   'click', () => { outRows.push(newOutRow()); renderOutRows(); });
   bind('btn-submit-in',         'click', submitStockIn);
   bind('btn-submit-transit',    'click', submitTransit);
-  bind('btn-clear-out',         'click', clearStockOut);
   bind('btn-submit-out',        'click', submitStockOut);
   bind('btn-export-inv',        'click', UI.exportInventoryCSV);
   bind('btn-export-deployed',   'click', UI.exportDeployedCSV);
   bind('btn-export-hist',       'click', UI.exportHistoryCSV);
-
-  // Stock Out mode toggle
-  document.querySelectorAll('.out-mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => setOutMode(btn.dataset.mode));
-  });
 
   bind('btn-rpt-run',      'click', Reports.render);
   bind('btn-rpt-export',   'click', Reports.exportAll);
@@ -544,6 +614,7 @@
 
   inRows = [newInRow()];
   trRows = [newTrRow()];
+  outRows = [newOutRow()];
 
   Auth.onReady((isLoggedIn) => {
     document.getElementById('alert-box').classList.remove('show');
