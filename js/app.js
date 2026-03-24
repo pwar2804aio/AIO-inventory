@@ -508,7 +508,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','servicing','reports','lookup','history'];
+  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','servicing','rma','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -519,6 +519,7 @@
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
     if (view === 'servicing')  UI.renderServicing();
+    if (view === 'rma')        UI.renderRMA();
     if (view === 'reports')    Reports.render();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
@@ -556,6 +557,7 @@
 
   bind('svc-search',      'input',  () => UI.renderServicing());
   bind('svc-flag-filter', 'change', () => UI.renderServicing());
+  bind('rma-search',      'input',  () => UI.renderRMA());
 
   bind('hist-search',      'input',  () => UI.renderHistory());
   bind('hist-type-filter', 'change', () => UI.renderHistory());
