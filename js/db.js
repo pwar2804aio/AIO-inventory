@@ -119,6 +119,7 @@ const DB = (() => {
     });
     _save();
   }
+  function exportJSON()          { return JSON.stringify(_data, null, 2); }
   function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},...p}; _save(); }
 
   init();
