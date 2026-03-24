@@ -432,3 +432,55 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   border-top: 2px solid var(--border-md);
   border-bottom: none;
 }
+
+/* ── USED badge ───────────────────────────────────────────────────────── */
+.b-used {
+  background: #fff0ea;
+  color: #c45320;
+  border: 1px solid #F4733B;
+  font-size: 9px;
+  padding: 1px 5px;
+  letter-spacing: .06em;
+}
+@media (prefers-color-scheme: dark) {
+  .b-used { background: #2a1200; color: #f4933b; border-color: #c45320; }
+}
+
+/* ── USED toggle (receipt details) ───────────────────────────────────── */
+.used-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.used-toggle input[type="checkbox"] { display: none; }
+.used-toggle-track {
+  width: 36px; height: 20px;
+  background: var(--border-md);
+  border-radius: 10px;
+  position: relative;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.used-toggle input:checked + .used-toggle-track { background: var(--aio-orange); }
+.used-toggle-thumb {
+  width: 14px; height: 14px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px; left: 3px;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.used-toggle input:checked + .used-toggle-track .used-toggle-thumb { transform: translateX(16px); }
+.used-toggle-label { font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* ── Deployed product table footer ───────────────────────────────────── */
+.product-stock-table tfoot td {
+  font-size: 12px;
+  background: var(--aio-purple-light);
+  border-top: 2px solid var(--border-md);
+  border-bottom: none;
+  padding: 10px 10px;
+}
