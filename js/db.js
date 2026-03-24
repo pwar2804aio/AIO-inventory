@@ -104,15 +104,16 @@ const DB = (() => {
     _save();
   }
   // Update condition flag on the IN movement for a serial (also records tester)
-  function updateSerialCondition(serial, condition, testedBy) {
+  function updateSerialCondition(serial, condition, testedBy, testedDate, notes) {
     const s = serial.toUpperCase();
     _data.movements = _data.movements.map(mv => {
       if (mv.type === 'IN' && mv.serials.some(x => x.toUpperCase() === s)) {
         return {
           ...mv,
           condition: condition,
-          testedBy:  testedBy || mv.testedBy || '',
-          testedAt:  condition === '' ? '' : (mv.testedAt || new Date().toISOString()),
+          testedBy:  testedBy  || mv.testedBy  || '',
+          testedAt:  testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? '' : (mv.testedAt || new Date().toISOString())),
+          testNotes: notes !== undefined ? notes : (mv.testNotes || ''),
         };
       }
       return mv;
