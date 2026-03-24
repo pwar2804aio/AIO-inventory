@@ -230,6 +230,7 @@
     document.getElementById('in-supplier').value    = '';
     document.getElementById('in-loc').value         = '';
     document.getElementById('in-received-by').value = '';
+    const poEl = document.getElementById('in-po'); if (poEl) poEl.value = '';
     const defaultCond = document.querySelector('input[name="in-condition"][value=""]');
     if (defaultCond) defaultCond.checked = true;
     inRows = [newInRow()]; renderInRows();
@@ -240,22 +241,25 @@
     try {
       const conditionEl = document.querySelector('input[name="in-condition"]:checked');
       const condition   = conditionEl ? conditionEl.value : '';
+      const poNumber    = document.getElementById('in-po')?.value.trim() || '';
       Inventory.stockIn({
         supplier:   document.getElementById('in-supplier').value.trim(),
         location:   document.getElementById('in-loc').value.trim(),
         receivedBy: document.getElementById('in-received-by').value.trim(),
         condition,
+        poNumber,
         products:   inRows,
       });
-      // Apply unit cost to all serials of each product (including existing ones)
-      inRows.forEach(row => {
-        if (row.unitCost != null) {
-          // Set cost on all serials just received
-          row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
-          // Also update all other existing serials with the same product name
-          DB.setProductCost(row.product, row.unitCost, Inventory.getInventoryMap());
-        }
-      });
+      // Apply unit cost — PO items have their cost locked in inventory.js already
+      // For non-PO items, propagate cost to all serials of same product
+      if (!poNumber) {
+        inRows.forEach(row => {
+          if (row.unitCost != null) {
+            row.serials.forEach(s => DB.setSerialCost(s, row.unitCost));
+            DB.setProductCost(row.product, row.unitCost, Inventory.getInventoryMap());
+          }
+        });
+      }
       const total = inRows.reduce((a, r) => a + r.serials.length, 0);
       const loc   = document.getElementById('in-loc').value.trim();
       clearStockIn();
@@ -283,7 +287,7 @@
   function removeTrRow(id) { if (trRows.length <= 1) return; trRows = trRows.filter(r => r.id !== id); renderTrRows(); }
 
   function clearTransitForm() {
-    ['tr-supplier','tr-loc','tr-expected'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+    ['tr-supplier','tr-loc','tr-expected','tr-po'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
     trRows = [newTrRow()]; renderTrRows();
   }
 
@@ -294,6 +298,7 @@
         supplier:   document.getElementById('tr-supplier').value.trim(),
         location:   document.getElementById('tr-loc').value.trim(),
         expectedBy: document.getElementById('tr-expected').value,
+        poNumber:   document.getElementById('tr-po')?.value.trim() || '',
         products:   trRows,
       });
       // Apply unit cost to in-transit serials
