@@ -30,6 +30,7 @@
       <button class="nav-btn" data-view="stock-list">Stock Holding</button>
       <button class="nav-btn" data-view="deployed">Stock Deployed</button>
       <button class="nav-btn" data-view="servicing">Servicing</button>
+      <button class="nav-btn" data-view="rma">RMA</button>
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
@@ -191,10 +192,15 @@
         <select class="fi" id="inv-loc-filter" style="width:160px;">
           <option value="">All locations</option>
         </select>
-        <select class="fi" id="inv-status-filter" style="width:140px;">
+        <select class="fi" id="inv-status-filter" style="width:160px;">
           <option value="">All status</option>
           <option value="in-stock">In stock</option>
           <option value="in-transit">In transit</option>
+          <option value="cond-used">Used</option>
+          <option value="cond-needs-testing">Needs Testing</option>
+          <option value="cond-faulty">Faulty</option>
+          <option value="cond-rma">RMA</option>
+        </select>
         </select>
       </div>
       <div class="table-wrap">
@@ -287,6 +293,36 @@
         </table>
       </div>
       <div class="hint" id="svc-footer" style="margin-top:8px;"></div>
+    </div>
+  </section>
+
+  <!-- RMA -->
+  <section id="v-rma" class="view" style="display:none;">
+    <div class="panel-toolbar">
+      <span class="toolbar-title">RMA</span>
+      <span class="hint" style="margin-top:0;">Items that have failed testing and need to be returned to manufacturer. Use Stock Out to remove from stock.</span>
+    </div>
+    <div class="panel">
+      <div class="search-bar">
+        <input class="fi" id="rma-search" placeholder="Search serial, product, location..." />
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:16%">Serial</th>
+              <th style="width:22%">Product</th>
+              <th style="width:13%">Category</th>
+              <th style="width:12%">Location</th>
+              <th style="width:11%">Tested by</th>
+              <th style="width:10%">Test date</th>
+              <th style="width:16%">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="rma-body"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="rma-footer" style="margin-top:8px;"></div>
     </div>
   </section>
 
@@ -401,13 +437,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=15"></script>
-<script src="js/auth-ui.js?v=15"></script>
-<script src="js/scanner.js?v=15"></script>
-<script src="js/db.js?v=15"></script>
-<script src="js/inventory.js?v=15"></script>
-<script src="js/reports.js?v=15"></script>
-<script src="js/ui.js?v=15"></script>
-<script src="js/app.js?v=15"></script>
+<script src="js/auth.js?v=16"></script>
+<script src="js/auth-ui.js?v=16"></script>
+<script src="js/scanner.js?v=16"></script>
+<script src="js/db.js?v=16"></script>
+<script src="js/inventory.js?v=16"></script>
+<script src="js/reports.js?v=16"></script>
+<script src="js/ui.js?v=16"></script>
+<script src="js/app.js?v=16"></script>
 </body>
 </html>
