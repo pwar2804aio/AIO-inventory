@@ -784,3 +784,54 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   font-weight: 700;
   color: var(--text);
 }
+
+/* ── Condition flag badges ────────────────────────────────────────────── */
+.b-condition { font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 700; letter-spacing: .06em; }
+.b-cond-used         { background: #fceaea; color: #a32020; border: 1px solid #d85050; }
+.b-cond-faulty       { background: #fff3cd; color: #7c4a00; border: 1px solid #e6a817; }
+.b-cond-needs-testing { background: #e8f0fe; color: #1a56a0; border: 1px solid #5b8dee; }
+@media (prefers-color-scheme: dark) {
+  .b-cond-used          { background: #2a0808; color: #f09090; border-color: #a32020; }
+  .b-cond-faulty        { background: #2a1e00; color: #f0c060; border-color: #8c6010; }
+  .b-cond-needs-testing { background: #0a1a2e; color: #80a8e8; border-color: #2c5eab; }
+}
+
+/* ── Condition flag radio buttons (Stock In) ─────────────────────────── */
+.condition-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.condition-flag-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.condition-flag-btn input[type="radio"] { display: none; }
+.condition-flag-btn span {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border-md);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  transition: all .12s;
+  cursor: pointer;
+}
+.condition-flag-btn input:checked + span {
+  border-color: var(--aio-purple);
+  background: var(--aio-purple-light);
+  color: var(--aio-purple-deep);
+  font-weight: 600;
+}
+.condition-flag-btn:has(input[value="faulty"]) input:checked + span {
+  border-color: #e6a817; background: #fff8e1; color: #7c4a00;
+}
+.condition-flag-btn:has(input[value="needs-testing"]) input:checked + span {
+  border-color: #5b8dee; background: #e8f0fe; color: #1a56a0;
+}
+.condition-flag-btn:has(input[value="used"]) input:checked + span {
+  border-color: #d85050; background: #fceaea; color: #a32020;
+}
