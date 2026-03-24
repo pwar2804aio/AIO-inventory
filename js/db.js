@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{} };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{} };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{} };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{} };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -126,10 +126,35 @@ const DB = (() => {
     _save();
   }
   function exportJSON()          { return JSON.stringify(_data, null, 2); }
-  function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},...p}; _save(); }
+  function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},purchaseOrders:{},...p}; _save(); }
+
+  // ── Purchase Orders ────────────────────────────────────────────────────
+  // poNumber -> { poNumber, supplier, date, lines: [{product, unitCost}] }
+  function savePO(poNumber, poData) {
+    if (!_data.purchaseOrders) _data.purchaseOrders = {};
+    _data.purchaseOrders[poNumber] = { ...poData, poNumber };
+    _save();
+  }
+  function getPO(poNumber)   { return (_data.purchaseOrders || {})[poNumber] || null; }
+  function getAllPOs()        { return Object.values(_data.purchaseOrders || {}); }
+  function getPONumbers()    { return Object.keys(_data.purchaseOrders || {}).sort(); }
+  // Get locked unit cost for a product from a specific PO
+  function getPOUnitCost(poNumber, product) {
+    const po = getPO(poNumber);
+    if (!po) return null;
+    const line = (po.lines || []).find(l => l.product === product);
+    return line ? line.unitCost : null;
+  }
+  // Store which PO a serial is linked to
+  function setSerialPO(serial, poNumber) {
+    if (!_data.serialPOs) _data.serialPOs = {};
+    _data.serialPOs[serial.toUpperCase()] = poNumber;
+    _save();
+  }
+  function getSerialPO(serial) { return (_data.serialPOs || {})[serial.toUpperCase()] || null; }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
