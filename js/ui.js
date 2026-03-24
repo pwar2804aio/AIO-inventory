@@ -323,7 +323,11 @@ const UI = (() => {
       tbody.innerHTML = rows.map(r => {
         const isPOLocked = !!r.poNumber;
         return `<tr data-serial="${esc(r.serial)}">
-          <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+          <td style="font-family:var(--mono);font-size:11px;font-weight:500">${
+            r.serial.startsWith('NS-')
+              ? `<span style="font-family:var(--font);color:var(--text-hint);font-style:italic;font-size:11px;">No serial</span>`
+              : esc(r.serial)
+          }</td>
           <td style="font-weight:500">${esc(r.product)}</td>
           <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
           <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
