@@ -841,3 +841,19 @@ tbody tr:hover td { background: var(--aio-purple-light); }
 @media (prefers-color-scheme: light) {
   .b-cond-rma { background: #fde8e8; color: #8b0000; border-color: #cc2222; }
 }
+
+/* ── PO lock badge ───────────────────────────────────────────────────── */
+.po-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--aio-purple);
+  background: var(--aio-purple-light);
+  border: 1px solid var(--border-md);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  cursor: default;
+}
