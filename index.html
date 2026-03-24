@@ -234,156 +234,58 @@
   </section>
 
   <!-- REPORTS -->
-  <section id="v-reports" class="view" style="display:none;">
-
-    <!-- Date filter bar -->
-    <div class="rpt-filter-bar">
-      <span class="rpt-filter-label">Date range</span>
-      <input class="fi" id="rpt-date-from" type="date" style="width:150px;" title="From" />
-      <span style="color:var(--text-hint);font-size:13px;">to</span>
-      <input class="fi" id="rpt-date-to"   type="date" style="width:150px;" title="To" />
-      <button class="btn btn-ghost btn-sm" id="rpt-clear-dates">Clear dates</button>
-      <button class="btn btn-success btn-sm" id="rpt-run">Run reports</button>
-    </div>
-
-    <!-- R1: Total Stock Value -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Total stock holding value</div>
-          <div class="rpt-section-sub">Cost of all units currently in stock, by product</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="stock-value">Export CSV</button>
-      </div>
-      <div id="rpt-stock-value" class="rpt-body"></div>
-    </div>
-
-    <!-- R2: Value by Category -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Stock value by category</div>
-          <div class="rpt-section-sub">Total holding value broken down by product category</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="value-category">Export CSV</button>
-      </div>
-      <div id="rpt-value-category" class="rpt-body"></div>
-    </div>
-
-    <!-- R3: Category Breakdown -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Category breakdown</div>
-          <div class="rpt-section-sub">Units by category — in stock vs in transit vs deployed</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="category-breakdown">Export CSV</button>
-      </div>
-      <div id="rpt-category-breakdown" class="rpt-body"></div>
-    </div>
-
-    <!-- R4: Product Breakdown -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Product breakdown</div>
-          <div class="rpt-section-sub">Every product line — units in stock, transit, deployed and their values</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="product-breakdown">Export CSV</button>
-      </div>
-      <div id="rpt-product-breakdown" class="rpt-body"></div>
-    </div>
-
-    <!-- R5: Low Stock -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Low stock items</div>
-          <div class="rpt-section-sub">Products at or below their alert threshold</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="low-stock">Export CSV</button>
-      </div>
-      <div id="rpt-low-stock" class="rpt-body"></div>
-    </div>
-
-    <!-- R6: Deployed Cost -->
-    <div class="rpt-section">
-      <div class="rpt-section-header">
-        <div>
-          <div class="rpt-section-title">Total cost of deployed stock</div>
-          <div class="rpt-section-sub">Value of all units dispatched to customers, by customer</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-export="deployed-cost">Export CSV</button>
-      </div>
-      <div id="rpt-deployed-cost" class="rpt-body"></div>
-    </div>
-
-  </section>
-
   <!-- REPORTS -->
   <section id="v-reports" class="view" style="display:none;">
 
-    <!-- Toolbar -->
     <div class="rpt-toolbar">
       <span class="toolbar-title">Reports</span>
       <div class="rpt-controls">
         <div class="rpt-date-group">
           <label class="form-label" style="white-space:nowrap;">Date range</label>
-          <input class="fi" id="rpt-date-from" type="date" style="width:145px;" placeholder="From" />
+          <input class="fi" id="rpt-date-from" type="date" style="width:145px;" />
           <span style="color:var(--text-hint);font-size:12px;">to</span>
-          <input class="fi" id="rpt-date-to"   type="date" style="width:145px;" placeholder="To" />
-          <button class="btn btn-ghost btn-sm" id="btn-rpt-run">Run report</button>
+          <input class="fi" id="rpt-date-to" type="date" style="width:145px;" />
+          <button class="btn btn-primary btn-sm" id="btn-rpt-run">Run report</button>
         </div>
         <button class="btn btn-ghost btn-sm" id="btn-rpt-export">Export all CSV</button>
       </div>
     </div>
 
-    <!-- Summary cards -->
-    <div id="rpt-summary" class="rpt-cards-wrap"></div>
+    <div class="rpt-cards-wrap" id="rpt-summary"></div>
 
-    <!-- Value by category -->
-    <div class="panel">
-      <div class="panel-title">
-        Stock value by category
-        <span class="rpt-desc">Holding stock only · cost required per serial</span>
+    <div class="rpt-panel">
+      <div class="rpt-panel-header">
+        <div><div class="rpt-panel-title">Stock value by category</div><div class="rpt-panel-sub">Total holding value broken down by product category</div></div>
       </div>
-      <div id="rpt-by-category"></div>
+      <div class="rpt-panel-body" id="rpt-by-category"></div>
     </div>
 
-    <!-- Value by product -->
-    <div class="panel">
-      <div class="panel-title">
-        Stock value by product
-        <span class="rpt-desc">Ranked by total value · holding stock only</span>
+    <div class="rpt-panel">
+      <div class="rpt-panel-header">
+        <div><div class="rpt-panel-title">Stock value by product</div><div class="rpt-panel-sub">Ranked by total value — holding stock only</div></div>
       </div>
-      <div id="rpt-by-product"></div>
+      <div class="rpt-panel-body" id="rpt-by-product"></div>
     </div>
 
-    <!-- Holding cost by location -->
-    <div class="panel">
-      <div class="panel-title">
-        Holding cost by location
-        <span class="rpt-desc">Total value of stock at each warehouse / location</span>
+    <div class="rpt-panel">
+      <div class="rpt-panel-header">
+        <div><div class="rpt-panel-title">Holding cost by location</div><div class="rpt-panel-sub">Total value of stock at each warehouse / location</div></div>
       </div>
-      <div id="rpt-by-location"></div>
+      <div class="rpt-panel-body" id="rpt-by-location"></div>
     </div>
 
-    <!-- Low stock -->
-    <div class="panel">
-      <div class="panel-title">
-        Low stock items
-        <span class="rpt-desc">Products at or below their alert threshold</span>
+    <div class="rpt-panel">
+      <div class="rpt-panel-header">
+        <div><div class="rpt-panel-title">Low stock items</div><div class="rpt-panel-sub">Products at or below their alert threshold</div></div>
       </div>
-      <div id="rpt-low-stock"></div>
+      <div class="rpt-panel-body" id="rpt-low-stock"></div>
     </div>
 
-    <!-- Deployed by customer -->
-    <div class="panel">
-      <div class="panel-title">
-        Deployed stock value by customer
-        <span class="rpt-desc">Total cost value of stock currently deployed per account</span>
+    <div class="rpt-panel">
+      <div class="rpt-panel-header">
+        <div><div class="rpt-panel-title">Deployed stock value by customer</div><div class="rpt-panel-sub">Total cost value of stock currently deployed per account</div></div>
       </div>
-      <div id="rpt-by-customer"></div>
+      <div class="rpt-panel-body" id="rpt-by-customer"></div>
     </div>
 
   </section>
