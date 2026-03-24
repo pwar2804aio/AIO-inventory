@@ -151,7 +151,7 @@ const UI = (() => {
       return `<div class="shipment-card">
         <div class="shipment-card-header">
           <div>
-            <div class="shipment-card-title">${esc(s.supplier || 'Shipment')} → <span class="loc-badge">${esc(s.location || '?')}</span></div>
+            <div class="shipment-card-title">${esc(s.supplier || 'Shipment')} → <span class="loc-badge">${esc(s.location || '?')}</span>${s.poNumber ? ` <span class="po-lock-badge">🔒 ${esc(s.poNumber)}</span>` : ''}</div>
             <div class="shipment-card-meta">${totalUnits} unit${totalUnits!==1?'s':''} · ${s.products.length} product${s.products.length!==1?'s':''} · Registered ${fmtDate(s.createdAt)}${expectedStr ? ' · ' + expectedStr : ''}</div>
           </div>
           <div class="shipment-actions">
@@ -318,25 +318,34 @@ const UI = (() => {
     if (!rows.length) {
       tbody.innerHTML = `<tr><td colspan="${isAdmin ? 7 : 6}"><div class="empty">No items found</div></td></tr>`;
     } else {
-      tbody.innerHTML = rows.map(r => `<tr data-serial="${esc(r.serial)}">
-        <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
-        <td style="font-weight:500">${esc(r.product)}</td>
-        <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
-        <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
-        <td>
-          <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
-          ${r.condition ? `<span class="badge b-condition b-cond-${r.condition}" style="margin-left:4px;">${_conditionLabel(r.condition)}</span>` : ''}
-        </td>
-        <td class="cost-cell" data-product="${esc(r.product)}" data-serial="${esc(r.serial)}" style="cursor:pointer;" title="Click to edit — updates all ${esc(r.product)} units">
-          ${r.cost != null
-            ? `<span class="cost-val">$${r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
-            : `<span style="color:var(--text-hint);font-size:11px">+ Add cost</span>`}
-        </td>
-        ${isAdmin ? `<td style="white-space:nowrap;text-align:right;">
-          <button class="btn-icon-edit" data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Edit serial number">✎</button>
-          <button class="btn-icon-del"  data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Delete this item" style="margin-left:4px;">✕</button>
-        </td>` : ''}
-      </tr>`).join('');
+      tbody.innerHTML = rows.map(r => {
+        const isPOLocked = !!r.poNumber;
+        return `<tr data-serial="${esc(r.serial)}">
+          <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
+          <td style="font-weight:500">${esc(r.product)}</td>
+          <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
+          <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
+          <td>
+            <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
+            ${r.condition ? `<span class="badge b-condition b-cond-${r.condition}" style="margin-left:4px;">${_conditionLabel(r.condition)}</span>` : ''}
+          </td>
+          <td class="${isPOLocked ? 'cost-cell-locked' : 'cost-cell'}"
+            data-product="${esc(r.product)}" data-serial="${esc(r.serial)}"
+            style="cursor:${isPOLocked ? 'default' : 'pointer'};"
+            ${isPOLocked ? '' : `title="Click to edit — updates all ${esc(r.product)} units"`}>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${r.cost != null
+                ? `<span class="cost-val">$${r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+                : `<span style="color:var(--text-hint);font-size:11px">${isPOLocked ? '—' : '+ Add cost'}</span>`}
+              ${isPOLocked ? `<span class="po-lock-badge" title="Price locked to PO: ${esc(r.poNumber)}">🔒 ${esc(r.poNumber)}</span>` : ''}
+            </div>
+          </td>
+          ${isAdmin ? `<td style="white-space:nowrap;text-align:right;">
+            <button class="btn-icon-edit" data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Edit serial number">✎</button>
+            <button class="btn-icon-del"  data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" title="Delete this item" style="margin-left:4px;">✕</button>
+          </td>` : ''}
+        </tr>`;
+      }).join('');
 
       // Cost cell inline editor
       tbody.querySelectorAll('.cost-cell').forEach(cell => {
@@ -494,13 +503,17 @@ const UI = (() => {
     set('loc-list',      Inventory.getLocations());
     set('tr-loc-list',   Inventory.getLocations());
     set('customer-list', Inventory.getCustomers());
+    // PO number autocomplete — both forms share the same PO list
+    const poNums = DB.getPONumbers();
+    set('po-list',    poNums);
+    set('po-list-in', poNums);
   }
 
   // ── CSV exports ───────────────────────────────────────────────────────
   function exportInventoryCSV() {
-    const rows = [['Serial Number','Product','Category','Location','Status','Cost']];
+    const rows = [['Serial Number','Product','Category','Location','Status','Cost','PO Number']];
     Inventory.getAllSerialRows().forEach(r => {
-      rows.push([r.serial, r.product, r.category, r.location, r.status, r.cost != null ? r.cost : '']);
+      rows.push([r.serial, r.product, r.category, r.location, r.status, r.cost != null ? r.cost : '', r.poNumber || '']);
     });
     _dlCSV(rows, 'aio_stock.csv');
   }
