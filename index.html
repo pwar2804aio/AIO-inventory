@@ -19,6 +19,7 @@
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+      <button class="nav-btn" data-view="transit">In Transit</button>
       <button class="nav-btn" data-view="in">Stock In</button>
       <button class="nav-btn" data-view="out">Stock Out</button>
       <button class="nav-btn" data-view="stock-list">All Stock</button>
@@ -33,11 +34,52 @@
   <!-- DASHBOARD -->
   <section id="v-dashboard" class="view">
     <div class="stats-row" id="stats-row"></div>
+    <!-- Stock by product -->
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Stock by product</div>
+      <div id="dash-product-stock"></div>
+    </div>
     <div class="two-col">
       <div class="panel"><div class="panel-title">Recent movements</div><div id="dash-recent"></div></div>
       <div class="panel"><div class="panel-title">Low stock alerts</div><div id="dash-low"></div></div>
     </div>
     <div class="panel"><div class="panel-title">Stock by location</div><div id="dash-locations"></div></div>
+  </section>
+
+  <!-- IN TRANSIT -->
+  <section id="v-transit" class="view" style="display:none;">
+    <!-- New shipment form -->
+    <div class="panel-toolbar">
+      <span class="toolbar-title">In Transit</span>
+      <button class="btn btn-success" id="btn-submit-transit">Register shipment</button>
+    </div>
+    <div class="panel" id="transit-form-panel" style="margin-bottom:1rem;">
+      <div class="panel-title">New shipment</div>
+      <div class="form-grid g3">
+        <div class="form-group">
+          <label class="form-label" for="tr-supplier">Supplier</label>
+          <input class="fi" id="tr-supplier" placeholder="e.g. Apple Dist. Co" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="tr-loc">Expected location *</label>
+          <input class="fi" id="tr-loc" placeholder="e.g. SF Warehouse" list="tr-loc-list" autocomplete="off" />
+          <datalist id="tr-loc-list"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="tr-expected">Expected by</label>
+          <input class="fi" id="tr-expected" type="date" />
+        </div>
+      </div>
+      <div id="transit-product-rows"></div>
+      <button class="btn btn-ghost btn-add-product" id="btn-add-transit-product">
+        <span>+</span> Add another product
+      </button>
+    </div>
+    <!-- Active shipments list -->
+    <div class="panel">
+      <div class="panel-title">Active shipments <span id="transit-count-badge"></span></div>
+      <div id="transit-list"></div>
+    </div>
   </section>
 
   <!-- STOCK IN -->
@@ -55,7 +97,7 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="in-loc">Location / Warehouse *</label>
-          <input class="fi" id="in-loc" placeholder="e.g. SF Warehouse, HQ Rack B2" list="loc-list" autocomplete="off" />
+          <input class="fi" id="in-loc" placeholder="e.g. SF Warehouse" list="loc-list" autocomplete="off" />
           <datalist id="loc-list"></datalist>
         </div>
         <div class="form-group">
@@ -91,7 +133,7 @@
       </div>
       <div class="form-group" style="margin-top:10px;">
         <label class="form-label" for="out-serial-field">Serial numbers to dispatch *</label>
-        <input class="fi fi-mono" id="out-serial-field" placeholder="Scan or type serial then Enter — validated against current stock in real time." style="margin-top:4px;" />
+        <input class="fi fi-mono" id="out-serial-field" placeholder="Scan or type serial then Enter — validated against current stock." style="margin-top:4px;" />
         <div class="hint">Unavailable serials shown in red and blocked on submit.</div>
         <div class="serial-area" id="out-tags"></div>
         <div class="hint" id="out-serial-count">0 serials</div>
@@ -103,15 +145,15 @@
     </div>
   </section>
 
-  <!-- ALL STOCK LIST -->
+  <!-- ALL STOCK -->
   <section id="v-stock-list" class="view" style="display:none;">
     <div class="panel">
       <div class="panel-title">
-        All stock
+        All stock — individual serials
         <button class="btn btn-ghost btn-sm" id="btn-export-inv">Export CSV</button>
       </div>
       <div class="search-bar">
-        <input class="fi" id="inv-search" placeholder="Search product, serial number, location..." />
+        <input class="fi" id="inv-search" placeholder="Search serial, product, location..." />
         <select class="fi" id="inv-cat-filter" style="width:185px;">
           <option value="">All categories</option>
           <option>POS Device</option>
@@ -124,30 +166,28 @@
         <select class="fi" id="inv-loc-filter" style="width:160px;">
           <option value="">All locations</option>
         </select>
-        <select class="fi" id="inv-status-filter" style="width:130px;">
+        <select class="fi" id="inv-status-filter" style="width:140px;">
           <option value="">All status</option>
-          <option value="in">In stock</option>
-          <option value="low">Low stock</option>
-          <option value="zero">Out of stock</option>
+          <option value="in-stock">In stock</option>
+          <option value="in-transit">In transit</option>
         </select>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th style="width:18%">Serial number</th>
               <th style="width:20%">Product</th>
               <th style="width:14%">Category</th>
               <th style="width:13%">Location</th>
-              <th style="width:9%">In stock</th>
-              <th style="width:8%">Total in</th>
-              <th style="width:8%">Total out</th>
-              <th style="width:8%">Alert at</th>
-              <th style="width:20%">Serials</th>
+              <th style="width:12%">Status</th>
+              <th style="width:10%">Cost</th>
             </tr>
           </thead>
           <tbody id="inv-body"></tbody>
         </table>
       </div>
+      <div class="inv-footer" id="inv-footer"></div>
     </div>
   </section>
 
