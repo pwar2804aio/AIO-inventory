@@ -79,17 +79,36 @@ const Inventory = (() => {
   function getStockByProduct() {
     const map = {};
     Object.values(getInventoryMap()).forEach(v => {
-      if (!map[v.product]) map[v.product] = { product: v.product, category: v.category, inStock: 0, inTransit: 0 };
+      if (!map[v.product]) map[v.product] = { product: v.product, category: v.category, inStock: 0, inTransit: 0, totalCost: 0, costedUnits: 0 };
       map[v.product].inStock += v.inStock.size;
-    });
-    // Add in-transit counts
-    DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
-      s.products.forEach(p => {
-        if (!map[p.product]) map[p.product] = { product: p.product, category: p.category, inStock: 0, inTransit: 0 };
-        map[p.product].inTransit += p.serials.length;
+      // Sum cost for all in-stock serials
+      v.inStock.forEach(serial => {
+        const cost = DB.getSerialCost(serial);
+        if (cost != null) {
+          map[v.product].totalCost  += cost;
+          map[v.product].costedUnits++;
+        }
       });
     });
-    return Object.values(map).sort((a, b) => a.product.localeCompare(b.product));
+    // Add in-transit counts and costs
+    DB.getData().shipments.filter(s => s.status === 'in-transit').forEach(s => {
+      s.products.forEach(p => {
+        if (!map[p.product]) map[p.product] = { product: p.product, category: p.category, inStock: 0, inTransit: 0, totalCost: 0, costedUnits: 0 };
+        map[p.product].inTransit += p.serials.length;
+        p.serials.forEach(serial => {
+          const cost = DB.getSerialCost(serial);
+          if (cost != null) {
+            map[p.product].totalCost  += cost;
+            map[p.product].costedUnits++;
+          }
+        });
+      });
+    });
+    // Add avgCost derived field
+    return Object.values(map).sort((a, b) => a.product.localeCompare(b.product)).map(p => ({
+      ...p,
+      avgCost: p.costedUnits > 0 ? p.totalCost / p.costedUnits : null,
+    }));
   }
 
   // All individual serial rows for All Stock view
