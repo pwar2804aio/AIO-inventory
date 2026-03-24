@@ -238,21 +238,53 @@ const UI = (() => {
     const costedCount = rows.filter(r => r.cost != null).length;
 
     const tbody = document.getElementById('inv-body');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No items found</div></td></tr>'; }
-    else {
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No items found</div></td></tr>';
+    } else {
       tbody.innerHTML = rows.map(r => `<tr>
         <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
         <td style="font-weight:500">${esc(r.product)}</td>
         <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
         <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
         <td><span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span></td>
-        <td style="font-size:12px">${r.cost != null ? '$' + r.cost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td class="cost-cell" data-product="${esc(r.product)}" data-serial="${esc(r.serial)}" style="cursor:pointer;" title="Click to edit — updates all ${esc(r.product)} units">
+          ${r.cost != null
+            ? `<span class="cost-val">$${r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+            : `<span style="color:var(--text-hint);font-size:11px">+ Add cost</span>`}
+        </td>
       </tr>`).join('');
+
+      // Inline cost editor — click to edit, propagates to ALL serials of that product
+      tbody.querySelectorAll('.cost-cell').forEach(cell => {
+        cell.addEventListener('click', () => {
+          if (cell.querySelector('input')) return;
+          const product = cell.dataset.product;
+          const serial  = cell.dataset.serial;
+          const cur = DB.getSerialCost(serial);
+          cell.innerHTML = `<div style="display:flex;align-items:center;gap:4px;">
+            <input class="serial-cost-input" type="number" min="0" step="0.01"
+              value="${cur != null ? cur : ''}" placeholder="0.00" style="width:85px;" />
+            <span style="font-size:10px;color:var(--aio-purple);white-space:nowrap">all ${esc(product)}</span>
+          </div>`;
+          const inp = cell.querySelector('input');
+          inp.focus(); inp.select();
+          const save = () => {
+            const cost = inp.value !== '' ? parseFloat(inp.value) : null;
+            DB.setProductCost(product, cost, Inventory.getInventoryMap());
+            renderStockList();
+          };
+          inp.addEventListener('blur', save);
+          inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+            if (e.key === 'Escape') { inp.removeEventListener('blur', save); renderStockList(); }
+          });
+        });
+      });
     }
 
     const footer = document.getElementById('inv-footer');
     footer.textContent = rows.length
-      ? `${rows.length} serial${rows.length!==1?'s':''} shown${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${costedCount} priced)` : ''}`
+      ? `${rows.length} serial${rows.length!==1?'s':''} shown${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${costedCount} priced)` : ' · Click any cost cell to add/edit price'}`
       : '';
   }
 
