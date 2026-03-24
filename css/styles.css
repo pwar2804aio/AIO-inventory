@@ -83,7 +83,7 @@ html, body { font-family: var(--font); font-size: 14px; background: var(--bg-3);
 }
 
 .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
-.logo-img { height: 32px; width: auto; }
+.logo-img { height: 36px; width: auto; }
 .logo-divider { width: 1px; height: 28px; background: rgba(255,255,255,0.2); }
 .logo-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.75); letter-spacing: 0.08em; text-transform: uppercase; }
 
