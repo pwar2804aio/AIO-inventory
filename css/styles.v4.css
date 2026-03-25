@@ -913,6 +913,14 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   .b-cond-fail-tl { background: #f3e8ff; color: #5a00aa; border-color: #8833cc; }
 }
 
+/* ── SmartSelect ─────────────────────────────────────────────────────── */
+.ss-wrap { display: flex; flex-direction: column; gap: 6px; }
+.ss-select { width: 100%; }
+.ss-add-row { display: flex; gap: 6px; align-items: center; }
+.ss-add-row .ss-new-input { flex: 1; min-width: 0; }
+.ss-confirm-btn { white-space: nowrap; }
+.ss-cancel-btn  { white-space: nowrap; }
+
 /* ── PO lock badge ───────────────────────────────────────────────────── */
 .po-lock-badge {
   display: inline-flex;
