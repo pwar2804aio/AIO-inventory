@@ -710,6 +710,12 @@
   bind('rma-search',        'input',  () => UI.renderRMA());
   bind('rma-status-filter', 'change', () => UI.renderRMA());
 
+  bind('tl-search',         'input',  () => UI.renderTotalLoss());
+  bind('tl-status-filter',  'change', () => UI.renderTotalLoss());
+
+  bind('rmatldisp-search',       'input',  () => UI.renderRmaTlDispatched());
+  bind('rmatldisp-type-filter',  'change', () => UI.renderRmaTlDispatched());
+
   bind('hist-search',      'input',  () => UI.renderHistory());
   bind('hist-type-filter', 'change', () => UI.renderHistory());
   bind('hist-cat-filter',  'change', () => UI.renderHistory());
