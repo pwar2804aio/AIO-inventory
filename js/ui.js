@@ -1016,5 +1016,112 @@ const UI = (() => {
     }
   }
 
-  return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV };
+  // ── SmartSelect ────────────────────────────────────────────────────────
+  // Replaces a plain <input> with a styled dropdown of known values + "Add new"
+  function SmartSelect(inputId, getOptions, saveNew) {
+    const input = document.getElementById(inputId);
+    if (!input || input._ssInit) return;
+    input._ssInit = true;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ss-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    input.style.display = 'none';
+
+    const select = document.createElement('select');
+    select.className = 'fi ss-select';
+    wrap.appendChild(select);
+
+    const addRow = document.createElement('div');
+    addRow.className = 'ss-add-row';
+    addRow.innerHTML = `
+      <input class="fi ss-new-input" placeholder="Type new value..." autocomplete="off" />
+      <button class="btn btn-primary btn-sm ss-confirm-btn">Add</button>
+      <button class="btn btn-ghost btn-sm ss-cancel-btn">✕</button>`;
+    wrap.appendChild(addRow);
+    hideAddRow();
+
+    function hideAddRow() { addRow.style.display = 'none'; }
+    function showAddRow() {
+      addRow.style.display = 'flex';
+      addRow.querySelector('.ss-new-input').value = '';
+      addRow.querySelector('.ss-new-input').focus();
+    }
+
+    function refresh(selectVal) {
+      const opts = getOptions();
+      const cur  = selectVal !== undefined ? selectVal : (input.value || '');
+      select.innerHTML =
+        `<option value="">— Select —</option>` +
+        opts.map(o => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${esc(o)}</option>`).join('') +
+        `<option value="__add__">＋ Add new...</option>`;
+      if (cur && opts.includes(cur)) {
+        select.value = cur;
+        input.value  = cur;
+      }
+    }
+
+    refresh();
+
+    select.addEventListener('change', () => {
+      if (select.value === '__add__') {
+        showAddRow();
+      } else {
+        hideAddRow();
+        input.value = select.value;
+      }
+    });
+
+    addRow.querySelector('.ss-confirm-btn').addEventListener('click', () => {
+      const val = addRow.querySelector('.ss-new-input').value.trim();
+      if (!val) return;
+      saveNew(val);
+      hideAddRow();
+      refresh(val);
+      input.value = val;
+    });
+
+    addRow.querySelector('.ss-cancel-btn').addEventListener('click', () => {
+      hideAddRow();
+      refresh(input.value);
+    });
+
+    addRow.querySelector('.ss-new-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') addRow.querySelector('.ss-confirm-btn').click();
+      if (e.key === 'Escape') addRow.querySelector('.ss-cancel-btn').click();
+    });
+
+    return { refresh: () => refresh() };
+  }
+
+  // Init all smart selects — called once after DB is ready
+  function initSmartSelects() {
+    SmartSelect('in-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
+    SmartSelect('tr-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
+    SmartSelect('in-loc',       Inventory.getLocations,  DB.addCustomLocation);
+    SmartSelect('tr-loc',       Inventory.getLocations,  DB.addCustomLocation);
+  }
+
+  // Refresh all smart selects (called after stock in/transit so new values appear)
+  function refreshSmartSelects() {
+    ['in-supplier','tr-supplier','in-loc','tr-loc'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input && input._ssInit) {
+        const wrap = input.parentNode;
+        const select = wrap.querySelector('.ss-select');
+        if (select) {
+          const opts = id.includes('supplier') ? Inventory.getSuppliers() : Inventory.getLocations();
+          const cur = input.value;
+          select.innerHTML =
+            `<option value="">— Select —</option>` +
+            opts.map(o => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${esc(o)}</option>`).join('') +
+            `<option value="__add__">＋ Add new...</option>`;
+          if (cur) select.value = cur;
+        }
+      }
+    });
+  }
+
+    return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
