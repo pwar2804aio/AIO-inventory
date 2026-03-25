@@ -619,7 +619,7 @@ const UI = (() => {
 
   // ── Condition flag helpers ─────────────────────────────────────────────
   function _conditionLabel(c) {
-    return { 'used': 'USED', 'faulty': '⚠ FAULTY', 'needs-testing': '🔬 TESTING', 'rma': '⛔ RMA' }[c] || c.toUpperCase();
+    return { 'used': 'USED', 'faulty': '⚠ FAULTY', 'needs-testing': '🔬 TESTING', 'rma': '⛔ RMA', 'fail-tl': '🗑 TL' }[c] || c.toUpperCase();
   }
 
   // ── Servicing view ─────────────────────────────────────────────────────
@@ -735,7 +735,11 @@ const UI = (() => {
             </label>
             <label class="condition-flag-btn">
               <input type="radio" name="svc-outcome" value="rma" />
-              <span style="color:var(--danger-text);">⛔ Fail — mark RMA</span>
+              <span style="color:var(--danger-text);">⛔ Fail - RMA</span>
+            </label>
+            <label class="condition-flag-btn">
+              <input type="radio" name="svc-outcome" value="fail-tl" />
+              <span style="color:var(--danger-text);">🗑 Fail - TL</span>
             </label>
           </div>
         </div>
@@ -764,13 +768,15 @@ const UI = (() => {
       if (!testedBy)   { errEl.textContent = 'Please select who tested this item.'; errEl.style.display='block'; return; }
       if (!testedDate) { errEl.textContent = 'Please enter the test date.'; errEl.style.display='block'; return; }
 
-      const newCondition = outcome === 'rma' ? 'rma' : '';  // db.js preserves USED
+      const newCondition = outcome === 'rma' ? 'rma' : outcome === 'fail-tl' ? 'fail-tl' : '';  // db.js preserves USED
       DB.updateSerialCondition(serial, newCondition, testedBy, testedDate, notes);
 
       close();
       renderServicing();
       if (outcome === 'rma') {
         showAlert(`${serial} marked as RMA`, 'success');
+      } else if (outcome === 'fail-tl') {
+        showAlert(`${serial} marked as Total Loss`, 'success');
       } else {
         showAlert(`${serial} passed testing — flag cleared`, 'success');
       }
