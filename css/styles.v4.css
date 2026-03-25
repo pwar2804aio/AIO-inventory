@@ -106,6 +106,9 @@ html, body { font-family: var(--font); font-size: 14px; background: var(--bg-3);
 .nav-btn.active { background: var(--aio-orange); color: #fff; border-color: var(--aio-orange-dark); }
 .nav-btn[data-view="transit"] { color: rgba(255,255,255,0.65); }
 .nav-btn[data-view="transit"].active { background: var(--aio-orange); border-color: var(--aio-orange-dark); }
+.nav-group { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }
+.nav-group-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.09em; color: rgba(255,255,255,0.38); padding: 2px 6px 0; cursor: default; user-select: none; font-weight: 600; }
+.nav-group-items { display: flex; gap: 2px; }
 
 /* ── Page content padding ────────────────────────────────────────────── */
 .view { padding: 0 1.5rem; }
