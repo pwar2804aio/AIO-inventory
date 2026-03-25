@@ -596,5 +596,41 @@ const Inventory = (() => {
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
+  // ── Recall deployed serial back to stock for servicing ─────────────
+  function recallToServicing(serial, location, condition, recalledBy) {
+    const s = serial.trim().toUpperCase();
+    if (!s)        throw new Error('Serial number is required.');
+    if (!location) throw new Error('Location is required.');
+
+    // Must currently be in deployed (OUT) state
+    const deployedSet = new Set(getDeployedSerialRows().map(r => r.serial.toUpperCase()));
+    if (!deployedSet.has(s)) throw new Error(`Serial "${s}" is not in Stock Deployed.`);
+
+    // Find the original IN movement to get product/category
+    const { movements } = DB.getData();
+    const origIn = [...movements].reverse().find(m => m.type === 'IN' && m.serials.map(x => x.toUpperCase()).includes(s));
+    if (!origIn) throw new Error('Cannot find original stock-in record for this serial.');
+
+    // Preserve original cost
+    const cost = DB.getSerialCost(s);
+
+    DB.addMovement({
+      id:         Date.now(),
+      type:       'IN',
+      product:    origIn.product,
+      category:   origIn.category,
+      location,
+      supplier:   'Recalled from deployment',
+      receivedBy: recalledBy || '',
+      serials:    [s],
+      condition:  condition || 'needs-testing',
+      used:       true,
+      date:       new Date().toISOString(),
+    });
+
+    // Re-apply the original serial cost
+    if (cost != null) DB.setSerialCost(s, cost);
+  }
+
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, CATEGORIES, PRODUCTS };
 })();
