@@ -192,7 +192,8 @@ const UI = (() => {
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">${s.products.reduce((a,p)=>a+p.serials.length,0)} units from ${esc(s.supplier||'supplier')}</div>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="form-label">Confirm location *</label>
-          <input class="fi" id="modal-loc" placeholder="e.g. SF Warehouse" />
+          <input class="fi" id="modal-loc" value="${esc(s.location||'')}" placeholder="e.g. SF Warehouse" list="modal-loc-list" />
+          <datalist id="modal-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
         </div>
         <div class="form-group">
           <label class="form-label">Received by</label>
@@ -204,17 +205,6 @@ const UI = (() => {
         </div>
       </div>`;
     document.body.appendChild(overlay);
-
-    // Init SmartSelect on the location field and pre-fill with shipment location
-    SmartSelect('modal-loc', Inventory.getLocations, DB.addCustomLocation);
-    const modalLocInput = document.getElementById('modal-loc');
-    const modalLocSelect = modalLocInput?.parentNode?.querySelector('.ss-select');
-    if (s.location && modalLocSelect) {
-      // If the location is already in the list, select it; otherwise just set input value
-      const opt = Array.from(modalLocSelect.options).find(o => o.value === s.location);
-      if (opt) { modalLocSelect.value = s.location; }
-      modalLocInput.value = s.location;
-    }
 
     document.getElementById('modal-cancel-btn').addEventListener('click', () => overlay.remove());
     document.getElementById('modal-confirm-btn').addEventListener('click', () => {
@@ -1055,8 +1045,7 @@ const UI = (() => {
         </div>
         <div class="form-group" style="margin-bottom:1rem;">
           <label class="form-label">Return to location *</label>
-          <input class="fi" id="recall-location" placeholder="e.g. SF Warehouse" value="${esc(currentLocation)}" list="recall-loc-list" autocomplete="off" />
-          <datalist id="recall-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+          <input class="fi" id="recall-location" placeholder="e.g. SF Warehouse" autocomplete="off" />
         </div>
         <div class="form-group" style="margin-bottom:1rem;">
           <label class="form-label">Recalled by</label>
@@ -1083,6 +1072,16 @@ const UI = (() => {
       </div>`;
 
     document.body.appendChild(modal);
+
+    // Init SmartSelect on the location field and pre-fill with current location
+    SmartSelect('recall-location', Inventory.getLocations, DB.addCustomLocation);
+    const recallLocInput  = document.getElementById('recall-location');
+    const recallLocSelect = recallLocInput?.parentNode?.querySelector('.ss-select');
+    if (currentLocation && recallLocSelect) {
+      const opt = Array.from(recallLocSelect.options).find(o => o.value === currentLocation);
+      if (opt) { recallLocSelect.value = currentLocation; }
+      recallLocInput.value = currentLocation;
+    }
 
     const close = () => modal.remove();
     document.getElementById('recall-modal-close').addEventListener('click', close);
