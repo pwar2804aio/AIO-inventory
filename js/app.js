@@ -327,6 +327,7 @@
       const total = inRows.reduce((a, r) => a + r.serials.length, 0);
       const loc   = document.getElementById('in-loc').value.trim();
       clearStockIn();
+      UI.refreshSmartSelects();
       UI.showAlert(`${total} unit${total!==1?'s':''} received at ${loc}`, 'success');
     } catch (err) { UI.showAlert(err.message, 'error'); }
   }
@@ -384,6 +385,7 @@
       clearTransitForm();
       UI.renderTransitList();
       UI.renderDashboard();
+      UI.refreshSmartSelects();
       UI.showAlert(`${total} unit${total!==1?'s':''} registered as in transit`, 'success');
     } catch (err) { UI.showAlert(err.message, 'error'); }
   }
@@ -796,6 +798,7 @@
     DB.onReady(() => {
       // Apply view-only restrictions if not editor/admin
       AuthUI.applyRoleRestrictions();
+      UI.initSmartSelects();
       showViewTracked('dashboard');
     });
   });
