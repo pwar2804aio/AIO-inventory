@@ -239,7 +239,7 @@ const UI = (() => {
 
     const tbody = document.getElementById('dep-body');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No deployed stock found</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No deployed stock found</div></td></tr>';
     } else {
       tbody.innerHTML = rows.map(r => `<tr>
         <td style="font-family:var(--mono);font-size:11px;font-weight:500">${esc(r.serial)}</td>
@@ -248,8 +248,16 @@ const UI = (() => {
         <td><strong>${esc(r.customer || '—')}</strong></td>
         <td style="font-size:11px;color:var(--text-muted)">${esc(r.by || '—')}</td>
         <td style="font-size:11px;color:var(--text-hint)">${fmtDateFull(r.date)}</td>
-        <td style="font-size:12px">${r.cost != null ? '$' + r.cost.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px">${r.cost != null ? '£' + r.cost.toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td><button class="btn btn-ghost btn-sm recall-btn" data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" data-location="${esc(r.location||'')}">🔧 Recall</button></td>
       </tr>`).join('');
+
+      // Wire recall buttons
+      tbody.querySelectorAll('.recall-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          showRecallModal(btn.dataset.serial, btn.dataset.product, btn.dataset.location);
+        });
+      });
     }
 
     const footer = document.getElementById('dep-footer');
@@ -843,7 +851,7 @@ const UI = (() => {
     if (!tbody) return;
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No RMA items found</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty">No RMA items found</div></td></tr>';
       if (footer) footer.textContent = '';
       return;
     }
@@ -866,6 +874,7 @@ const UI = (() => {
         <td style="font-size:11px;color:var(--text-hint);">${isReturned
           ? (r.returnedDate ? fmtDate(r.returnedDate) : '—') + (r.returnedTo ? `<br><span style="color:var(--text-muted)">${esc(r.returnedTo)}</span>` : '')
           : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '£' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
       </tr>`;
     }).join('');
 
@@ -930,7 +939,7 @@ const UI = (() => {
     if (!tbody) return;
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No Total Loss items found</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty">No Total Loss items found</div></td></tr>';
       if (footer) footer.textContent = '';
       return;
     }
@@ -953,6 +962,7 @@ const UI = (() => {
         <td style="font-size:11px;color:var(--text-hint);">${isWrittenOff
           ? (r.writtenOffDate ? fmtDate(r.writtenOffDate) : '—') + (r.writtenOffTo ? `<br><span style="color:var(--text-muted)">${esc(r.writtenOffTo)}</span>` : '')
           : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '£' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
       </tr>`;
     }).join('');
 
@@ -1014,6 +1024,76 @@ const UI = (() => {
       const tlCount  = rows.filter(r => r.rmaTlType === 'fail-tl').length;
       footer.textContent = `${rows.length} dispatched — ${rmaCount} RMA · ${tlCount} Total Loss`;
     }
+  }
+
+  // ── Recall to Servicing modal ─────────────────────────────────────────
+  function showRecallModal(serial, product, currentLocation) {
+    const existing = document.getElementById('recall-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'recall-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box" style="width:440px;">
+        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+          <span>Recall to Servicing</span>
+          <button class="btn-remove-row" id="recall-modal-close">×</button>
+        </div>
+        <div style="margin-bottom:1rem;font-size:13px;color:var(--text-muted);">
+          Returning <strong style="color:var(--text);">${esc(serial)}</strong> (${esc(product)}) from deployment back into stock for servicing.
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label class="form-label">Return to location *</label>
+          <input class="fi" id="recall-location" placeholder="e.g. SF Warehouse" value="${esc(currentLocation)}" list="recall-loc-list" autocomplete="off" />
+          <datalist id="recall-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label class="form-label">Recalled by</label>
+          <input class="fi" id="recall-by" placeholder="e.g. Peter Roberts" />
+        </div>
+        <div class="form-group" style="margin-bottom:1.5rem;">
+          <label class="form-label">Condition on return</label>
+          <div class="condition-flags">
+            <label class="condition-flag-btn">
+              <input type="radio" name="recall-condition" value="needs-testing" checked />
+              <span>🔬 Needs Testing</span>
+            </label>
+            <label class="condition-flag-btn">
+              <input type="radio" name="recall-condition" value="faulty" />
+              <span>⚠ Faulty</span>
+            </label>
+          </div>
+        </div>
+        <div id="recall-modal-error" style="display:none;color:var(--danger-text);font-size:12px;margin-bottom:10px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-ghost" id="recall-modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="recall-modal-confirm">Recall to Servicing</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    document.getElementById('recall-modal-close').addEventListener('click', close);
+    document.getElementById('recall-modal-cancel').addEventListener('click', close);
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    document.getElementById('recall-modal-confirm').addEventListener('click', () => {
+      const location  = document.getElementById('recall-location').value.trim();
+      const recalledBy = document.getElementById('recall-by').value.trim();
+      const condition = document.querySelector('input[name="recall-condition"]:checked')?.value || 'needs-testing';
+      const errEl     = document.getElementById('recall-modal-error');
+
+      if (!location) { errEl.textContent = 'Location is required.'; errEl.style.display = 'block'; return; }
+
+      try {
+        Inventory.recallToServicing(serial, location, condition, recalledBy);
+        close();
+        renderDeployed();
+        showAlert(`${serial} recalled to Servicing at ${location}`, 'success');
+      } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    });
   }
 
   // ── SmartSelect ────────────────────────────────────────────────────────
