@@ -175,7 +175,7 @@ const Inventory = (() => {
     // Build a map: serial -> last OUT movement
     const lastOut = {};
     movements.forEach(mv => {
-      if (mv.type === 'OUT') {
+      if (mv.type === 'OUT' && !mv.isRmaTl) {
         mv.serials.forEach(s => {
           lastOut[s] = { ...mv };
         });
@@ -204,6 +204,47 @@ const Inventory = (() => {
     const s = new Set();
     Object.values(getInventoryMap()).forEach(v => v.inStock.forEach(x => s.add(x)));
     return s;
+  }
+
+  // Returns a map of serial -> condition for all serials currently in stock
+  function getSerialConditionMap() {
+    const map = {};
+    getAllSerialRows().forEach(r => { map[r.serial.toUpperCase()] = r.condition || ''; });
+    return map;
+  }
+
+  // Returns all dispatched rows that were RMA or TL at time of dispatch
+  function getRmaTlDispatchedRows() {
+    const rows = [];
+    const { movements } = DB.getData();
+    const lastOut = {};
+    movements.forEach(mv => {
+      if (mv.type === 'OUT' && mv.isRmaTl) {
+        mv.serials.forEach(s => { lastOut[s] = { ...mv }; });
+      }
+    });
+    const availableSerials = getAvailableSerials();
+    Object.entries(lastOut).forEach(([serial, mv]) => {
+      if (!availableSerials.has(serial)) {
+        rows.push({
+          serial,
+          product:    mv.product,
+          category:   mv.category || '',
+          customer:   mv.customer || '',
+          by:         mv.by || '',
+          ref:        mv.ref || '',
+          date:       mv.date,
+          cost:       DB.getSerialCost(serial),
+          rmaTlType:  mv.rmaTlType || 'rma',
+        });
+      }
+    });
+    return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  // Returns items with fail-tl condition still in stock (for Total Loss view)
+  function getTotalLossRows() {
+    return getAllSerialRows().filter(r => r.condition === 'fail-tl');
   }
 
   function getLowStockItems() {
@@ -486,8 +527,11 @@ const Inventory = (() => {
     });
 
     const now = Date.now();
+    const condMap = getSerialConditionMap();
     Object.values(groups).forEach((g, i) => {
-      DB.addMovement({ id: now + i, type: 'OUT', product: g.product, category: g.category, location: g.location, customer, by: by || '', ref: ref || '', serials: g.serials, date: new Date().toISOString() });
+      const isRmaTl = g.serials.some(s => ['rma','fail-tl'].includes(condMap[s.toUpperCase()]));
+      const rmaTlType = g.serials.some(s => condMap[s.toUpperCase()] === 'fail-tl') ? 'fail-tl' : 'rma';
+      DB.addMovement({ id: now + i, type: 'OUT', product: g.product, category: g.category, location: g.location, customer, by: by || '', ref: ref || '', serials: g.serials, date: new Date().toISOString(), ...(isRmaTl ? { isRmaTl: true, rmaTlType } : {}) });
     });
   }
 
@@ -508,14 +552,19 @@ const Inventory = (() => {
       const available = [...v.inStock];
       if (available.length < qty) throw new Error(`Only ${available.length} unit(s) of "${product}" available at ${location} — requested ${qty}`);
 
+      const slicedSerials = available.slice(0, qty);
+      const condMap2 = getSerialConditionMap();
+      const isRmaTl2 = slicedSerials.some(s => ['rma','fail-tl'].includes(condMap2[s.toUpperCase()]));
+      const rmaTlType2 = slicedSerials.some(s => condMap2[s.toUpperCase()] === 'fail-tl') ? 'fail-tl' : 'rma';
       DB.addMovement({
         id: now + (i++),
         type: 'OUT',
         product, category: v.category, location,
         customer, by: by || '', ref: ref || '',
-        serials: available.slice(0, qty),  // take first N — serials may be blank/generated
+        serials: slicedSerials,
         qty,
         date: new Date().toISOString(),
+        ...(isRmaTl2 ? { isRmaTl: true, rmaTlType: rmaTlType2 } : {}),
       });
     });
   }
@@ -540,5 +589,5 @@ const Inventory = (() => {
     };
   }
 
-  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
+  return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getProducts, getCustomers, getStats, CATEGORIES, PRODUCTS };
 })();
