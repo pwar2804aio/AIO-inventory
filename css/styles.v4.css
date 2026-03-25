@@ -907,6 +907,12 @@ tbody tr:hover td { background: var(--aio-purple-light); }
   .b-cond-rma { background: #fde8e8; color: #8b0000; border-color: #cc2222; }
 }
 
+/* ── Fail-TL badge ───────────────────────────────────────────────────── */
+.b-cond-fail-tl { background: #1a0a1a; color: #cc88ff; border: 1px solid #8833cc; font-weight: 700; }
+@media (prefers-color-scheme: light) {
+  .b-cond-fail-tl { background: #f3e8ff; color: #5a00aa; border-color: #8833cc; }
+}
+
 /* ── PO lock badge ───────────────────────────────────────────────────── */
 .po-lock-badge {
   display: inline-flex;
