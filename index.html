@@ -41,6 +41,7 @@
         <div class="nav-dropdown-menu" id="dd-stock-info">
           <button class="nav-dropdown-item" data-view="stock-list">Stock Holding</button>
           <button class="nav-dropdown-item" data-view="deployed">Stock Deployed</button>
+          <button class="nav-dropdown-item" data-view="rmatldisp">Stock RMA / TL</button>
         </div>
       </div>
       <div class="nav-dropdown">
@@ -50,6 +51,7 @@
         <div class="nav-dropdown-menu" id="dd-workshop">
           <button class="nav-dropdown-item" data-view="servicing">Servicing</button>
           <button class="nav-dropdown-item" data-view="rma">RMA</button>
+          <button class="nav-dropdown-item" data-view="totalloss">Total Loss</button>
         </div>
       </div>
       <button class="nav-btn" data-view="reports">Reports</button>
@@ -369,6 +371,80 @@
     </div>
   </section>
 
+
+  <!-- TOTAL LOSS -->
+  <section id="v-totalloss" class="view" style="display:none;">
+    <div class="panel-toolbar">
+      <span class="toolbar-title">Total Loss</span>
+      <span class="hint" style="margin-top:0;">Items marked as Total Loss. Use Stock Out to write them off.</span>
+    </div>
+    <div class="panel">
+      <div class="search-bar">
+        <input class="fi" id="tl-search" placeholder="Search serial, product, location..." />
+        <select class="fi" id="tl-status-filter" style="width:175px;">
+          <option value="">All</option>
+          <option value="to-writeoff">🗑 To Write Off</option>
+          <option value="written-off">✓ Written Off</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:14%">Serial</th>
+              <th style="width:18%">Product</th>
+              <th style="width:11%">Category</th>
+              <th style="width:10%">Location</th>
+              <th style="width:9%">Status</th>
+              <th style="width:10%">Tested by</th>
+              <th style="width:9%">Test date</th>
+              <th style="width:11%">Notes</th>
+              <th style="width:8%">Written Off</th>
+            </tr>
+          </thead>
+          <tbody id="tl-body"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="tl-footer" style="margin-top:8px;"></div>
+    </div>
+  </section>
+
+  <!-- STOCK RMA / TL DISPATCHED -->
+  <section id="v-rmatldisp" class="view" style="display:none;">
+    <div class="panel-toolbar">
+      <span class="toolbar-title">Stock RMA / TL</span>
+      <span class="hint" style="margin-top:0;">Items dispatched as RMA or Total Loss — excluded from Stock Deployed.</span>
+    </div>
+    <div class="panel">
+      <div class="search-bar">
+        <input class="fi" id="rmatldisp-search" placeholder="Search serial, product, customer..." />
+        <select class="fi" id="rmatldisp-type-filter" style="width:175px;">
+          <option value="">All types</option>
+          <option value="rma">⛔ RMA</option>
+          <option value="fail-tl">🗑 Total Loss</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:15%">Serial</th>
+              <th style="width:19%">Product</th>
+              <th style="width:13%">Category</th>
+              <th style="width:9%">Type</th>
+              <th style="width:16%">Dispatched to</th>
+              <th style="width:12%">Dispatched by</th>
+              <th style="width:10%">Date</th>
+              <th style="width:6%">Cost</th>
+            </tr>
+          </thead>
+          <tbody id="rmatldisp-body"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="rmatldisp-footer" style="margin-top:8px;"></div>
+    </div>
+  </section>
+
   <!-- REPORTS -->
   <!-- REPORTS -->
   <section id="v-reports" class="view" style="display:none;">
@@ -480,13 +556,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=27"></script>
-<script src="js/auth-ui.js?v=27"></script>
-<script src="js/scanner.js?v=27"></script>
-<script src="js/db.js?v=27"></script>
-<script src="js/inventory.js?v=27"></script>
-<script src="js/reports.js?v=27"></script>
-<script src="js/ui.js?v=27"></script>
-<script src="js/app.js?v=27"></script>
+<script src="js/auth.js?v=28"></script>
+<script src="js/auth-ui.js?v=28"></script>
+<script src="js/scanner.js?v=28"></script>
+<script src="js/db.js?v=28"></script>
+<script src="js/inventory.js?v=28"></script>
+<script src="js/reports.js?v=28"></script>
+<script src="js/ui.js?v=28"></script>
+<script src="js/app.js?v=28"></script>
 </body>
 </html>
