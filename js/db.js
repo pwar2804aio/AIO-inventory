@@ -11,7 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
-  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {} };
+  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, customSuppliers: [], customLocations: [] };
   let _db    = null;
   let _ready = false;
   let _onReadyCallbacks = [];
@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{} };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[] };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{} };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[] };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -155,8 +155,19 @@ const DB = (() => {
   }
   function getSerialPO(serial) { return (_data.serialPOs || {})[serial.toUpperCase()] || null; }
 
+  function addCustomSupplier(name) {
+    if (!_data.customSuppliers) _data.customSuppliers = [];
+    if (!_data.customSuppliers.includes(name)) { _data.customSuppliers.push(name); _save(); }
+  }
+  function addCustomLocation(name) {
+    if (!_data.customLocations) _data.customLocations = [];
+    if (!_data.customLocations.includes(name)) { _data.customLocations.push(name); _save(); }
+  }
+  function getCustomSuppliers() { return _data.customSuppliers || []; }
+  function getCustomLocations() { return _data.customLocations || []; }
+
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
