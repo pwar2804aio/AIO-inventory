@@ -630,6 +630,12 @@
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    document.querySelectorAll('.nav-dropdown-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    // Keep dropdown toggle highlighted when a child view is active
+    document.querySelectorAll('.nav-dropdown').forEach(dd => {
+      const hasActive = dd.querySelector('.nav-dropdown-item.active');
+      dd.querySelector('.nav-dropdown-toggle')?.classList.toggle('active', !!hasActive);
+    });
     UI.hideAlert();
     if (view === 'dashboard')  UI.renderDashboard();
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
@@ -644,7 +650,32 @@
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
   }
 
-  document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => showViewTracked(btn.dataset.view)));
+  // Nav buttons (top-level)
+  document.querySelectorAll('.nav-btn:not(.nav-dropdown-toggle)').forEach(btn => btn.addEventListener('click', () => showViewTracked(btn.dataset.view)));
+
+  // Dropdown toggle
+  document.querySelectorAll('.nav-dropdown-toggle').forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dd = toggle.closest('.nav-dropdown');
+      const isOpen = dd.classList.contains('open');
+      document.querySelectorAll('.nav-dropdown').forEach(d => d.classList.remove('open'));
+      if (!isOpen) dd.classList.add('open');
+    });
+  });
+
+  // Dropdown items
+  document.querySelectorAll('.nav-dropdown-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-dropdown').forEach(d => d.classList.remove('open'));
+      showViewTracked(item.dataset.view);
+    });
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.nav-dropdown').forEach(d => d.classList.remove('open'));
+  });
 
   // ── Bindings ──────────────────────────────────────────────────────────
   function bind(id, ev, fn) { const el=document.getElementById(id); if(el) el.addEventListener(ev, fn); }
