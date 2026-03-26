@@ -99,24 +99,40 @@ const UserManager = (() => {
   }
 
   async function addUser(email, password, name, role) {
-    // Create Firebase Auth account
-    const { getAuth, createUserWithEmailAndPassword } =
+    const { initializeApp, getApp, deleteApp } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const { getAuth, createUserWithEmailAndPassword, signOut: fbSignOut } =
       await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     const { getFirestore, doc, setDoc } =
       await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
-    const auth = getAuth();
-    const db   = getFirestore();
+    const FB_CONFIG = {
+      apiKey:            "AIzaSyCJaWCjiBSYEATT7ytZoK23Dauqgek1M-g",
+      authDomain:        "aio-inventory.firebaseapp.com",
+      projectId:         "aio-inventory",
+      storageBucket:     "aio-inventory.firebasestorage.app",
+      messagingSenderId: "168216293932",
+      appId:             "1:168216293932:web:68438c3e40e46ffd2f9789"
+    };
 
-    // Create auth user
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const uid  = cred.user.uid;
+    // Use a secondary app instance so the admin session is never touched
+    const secondaryApp  = initializeApp(FB_CONFIG, 'aio-user-creation-' + Date.now());
+    const secondaryAuth = getAuth(secondaryApp);
+    const db            = getFirestore();
 
-    // Save profile to Firestore
-    await setDoc(doc(db, 'users', uid), { name, email, role, createdAt: new Date().toISOString() });
+    try {
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      const uid  = cred.user.uid;
 
-    // Sign back in as admin (creating a new user signs in as that user)
-    return uid;
+      // Save profile to Firestore using the primary db instance
+      await setDoc(doc(db, 'users', uid), { name, email, role, createdAt: new Date().toISOString() });
+
+      return uid;
+    } finally {
+      // Always clean up the secondary app — admin stays logged in on primary
+      try { await fbSignOut(secondaryAuth); } catch(_) {}
+      try { await deleteApp(secondaryApp); } catch(_) {}
+    }
   }
 
   async function updateUserRole(uid, role) {
