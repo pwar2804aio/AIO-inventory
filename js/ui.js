@@ -312,11 +312,16 @@ const UI = (() => {
     container.innerHTML = active.map(s => {
       const totalUnits = s.products.reduce((a, p) => a + p.serials.length, 0);
       const expectedStr = s.expectedBy ? `Expected ${new Date(s.expectedBy).toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : '';
+      const fmt$ = n => '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const freightStr  = s.freightCost > 0
+        ? `🚚 ${esc(s.freightSupplier || 'Freight')}${s.freightPO ? ` · ${esc(s.freightPO)}` : ''} · ${fmt$(s.freightCost)} freight`
+        : '';
       return `<div class="shipment-card">
         <div class="shipment-card-header">
           <div>
             <div class="shipment-card-title">${esc(s.supplier || 'Shipment')} → <span class="loc-badge">${esc(s.location || '?')}</span>${s.poNumber ? ` <span class="po-lock-badge">🔒 ${esc(s.poNumber)}</span>` : ''}</div>
             <div class="shipment-card-meta">${totalUnits} unit${totalUnits!==1?'s':''} · ${s.products.length} product${s.products.length!==1?'s':''} · Registered ${fmtDate(s.createdAt)}${expectedStr ? ' · ' + expectedStr : ''}</div>
+            ${freightStr ? `<div class="shipment-card-meta" style="margin-top:3px;color:var(--text-muted);">${freightStr}</div>` : ''}
           </div>
           <div class="shipment-actions">
             <button class="btn btn-success btn-xs" data-receive="${s.id}">Receive</button>
