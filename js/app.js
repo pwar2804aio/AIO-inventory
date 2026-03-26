@@ -503,30 +503,64 @@
     const order = DB.getOrders().find(o => o.id === orderId);
     if (!order) return;
 
-    // Show a modal asking only for destination location + expected date
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     const knownLocations = Inventory.getLocations();
-    const locationOpts = knownLocations.map(l => `<option value="${l}">${l}</option>`).join('');
+    const locationOpts   = knownLocations.map(l => `<option value="${l}">${l}</option>`).join('');
+    const totalOrderValue = order.products.reduce((a, p) => a + p.qty * (p.unitCost || 0), 0);
+    const totalUnits      = order.products.reduce((a, p) => a + p.qty, 0);
+
     overlay.innerHTML = `
-      <div class="modal-box">
+      <div class="modal-box" style="max-width:520px;">
         <div class="modal-title">Register shipment</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">
-          ${order.products.reduce((a,p)=>a+p.qty,0)} units · ${esc(order.supplier)} · ${esc(order.poNumber)}
+          ${totalUnits} units &middot; ${esc(order.supplier)} &middot; PO ${esc(order.poNumber)}
+          &middot; Order value $${totalOrderValue.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
         </div>
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Destination location *</label>
-          <select class="fi" id="arrange-loc">
-            <option value="">Select location...</option>
-            ${locationOpts}
-            <option value="__new__">＋ Enter new location...</option>
-          </select>
-          <input class="fi" id="arrange-loc-custom" placeholder="Type new location name"
-            style="margin-top:6px;display:none;" />
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:8px;">Destination</div>
+        <div class="form-grid g2" style="margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label">Destination location *</label>
+            <select class="fi" id="arrange-loc">
+              <option value="">Select location...</option>
+              ${locationOpts}
+              <option value="__new__">＋ Enter new location...</option>
+            </select>
+            <input class="fi" id="arrange-loc-custom" placeholder="Type new location name" style="margin-top:6px;display:none;" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Expected by</label>
+            <input class="fi" id="arrange-expected" type="date" value="${order.expectedBy || ''}" />
+          </div>
         </div>
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Expected by</label>
-          <input class="fi" id="arrange-expected" type="date" value="${order.expectedBy || ''}" />
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:6px;padding-top:10px;border-top:1px solid var(--border);">Freight / Shipping</div>
+        <div style="font-size:11px;color:var(--text-hint);margin-bottom:10px;">Freight cost is split across product lines proportionally by value and added to each unit's landed cost.</div>
+        <div class="form-grid g3" style="margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label">Freight supplier</label>
+            <input class="fi" id="arrange-freight-supplier" placeholder="e.g. DHL, FedEx" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Freight PO / ref</label>
+            <input class="fi" id="arrange-freight-po" placeholder="e.g. FREIGHT-2026-001" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Total freight cost ($)</label>
+            <input class="fi" id="arrange-freight-cost" type="number" min="0" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <div id="arrange-landed-preview" style="margin-bottom:14px;display:none;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:6px;">Landed cost preview</div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;">
+            <thead><tr>
+              <th style="text-align:left;padding:4px 6px;color:var(--text-muted);font-weight:600;">Product</th>
+              <th style="text-align:right;padding:4px 6px;color:var(--text-muted);font-weight:600;">Qty</th>
+              <th style="text-align:right;padding:4px 6px;color:var(--text-muted);font-weight:600;">Unit cost</th>
+              <th style="text-align:right;padding:4px 6px;color:var(--text-muted);font-weight:600;">Freight/unit</th>
+              <th style="text-align:right;padding:4px 6px;color:var(--aio-purple);font-weight:700;">Landed/unit</th>
+            </tr></thead>
+            <tbody id="arrange-preview-rows"></tbody>
+          </table>
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="arrange-cancel-btn">Cancel</button>
@@ -535,7 +569,9 @@
       </div>`;
     document.body.appendChild(overlay);
 
-    // Show/hide custom input when "Enter new location" is picked
+    function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    const fmt$ = n => '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
     const locSel    = document.getElementById('arrange-loc');
     const locCustom = document.getElementById('arrange-loc-custom');
     locSel.addEventListener('change', () => {
@@ -544,51 +580,91 @@
       if (isNew) locCustom.focus();
     });
 
-    function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function updatePreview() {
+      const freightCost = parseFloat(document.getElementById('arrange-freight-cost').value) || 0;
+      const preview     = document.getElementById('arrange-landed-preview');
+      const tbody       = document.getElementById('arrange-preview-rows');
+      if (freightCost <= 0 || totalOrderValue <= 0) { preview.style.display = 'none'; return; }
+      preview.style.display = 'block';
+      tbody.innerHTML = order.products.map(p => {
+        const lineValue      = p.qty * (p.unitCost || 0);
+        const freightShare   = (lineValue / totalOrderValue) * freightCost;
+        const freightPerUnit = p.qty > 0 ? freightShare / p.qty : 0;
+        const landedPerUnit  = (p.unitCost || 0) + freightPerUnit;
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:5px 6px;font-weight:500;">${esc(p.product)}</td>
+          <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${p.qty}</td>
+          <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${fmt$(p.unitCost || 0)}</td>
+          <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${fmt$(freightPerUnit)}</td>
+          <td style="padding:5px 6px;text-align:right;font-weight:700;color:var(--aio-purple);">${fmt$(landedPerUnit)}</td>
+        </tr>`;
+      }).join('');
+    }
+    document.getElementById('arrange-freight-cost').addEventListener('input', updatePreview);
 
     document.getElementById('arrange-cancel-btn').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
     document.getElementById('arrange-confirm-btn').addEventListener('click', () => {
-      const sel = document.getElementById('arrange-loc');
-      const loc = sel.value === '__new__'
-        ? document.getElementById('arrange-loc-custom').value.trim()
-        : sel.value;
-      const expected = document.getElementById('arrange-expected').value;
+      const loc = locSel.value === '__new__'
+        ? locCustom.value.trim()
+        : locSel.value;
+      const expected        = document.getElementById('arrange-expected').value;
+      const freightSupplier = document.getElementById('arrange-freight-supplier').value.trim();
+      const freightPO       = document.getElementById('arrange-freight-po').value.trim();
+      const freightCost     = parseFloat(document.getElementById('arrange-freight-cost').value) || 0;
+
       if (!loc) { UI.showAlert('Destination location is required.', 'error'); return; }
 
-      // Generate NS- placeholder serials from qty per product (same pattern as no-serial stock)
       const ts = Date.now();
       const shipmentProducts = order.products.map((p, pi) => {
-        const tag = (p.product || 'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
-        const serials = Array.from({ length: p.qty }, (_, i) =>
-          `NS-${tag}-${ts + pi}-${i + 1}`
-        );
-        // Lock cost from order into each serial
-        if (p.unitCost != null) serials.forEach(s => DB.setSerialCost(s, p.unitCost));
-        return { product: p.product, category: p.category, serials };
+        const lineValue      = p.qty * (p.unitCost || 0);
+        const freightShare   = totalOrderValue > 0 ? (lineValue / totalOrderValue) * freightCost : 0;
+        const freightPerUnit = p.qty > 0 ? freightShare / p.qty : 0;
+        const landedPerUnit  = parseFloat(((p.unitCost || 0) + freightPerUnit).toFixed(4));
+
+        const tag     = (p.product || 'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
+        const serials = Array.from({ length: p.qty }, (_, i) => `NS-${tag}-${ts + pi}-${i + 1}`);
+
+        // Stamp landed cost on every serial right now
+        serials.forEach(s => DB.setSerialCost(s, landedPerUnit));
+
+        return {
+          product:        p.product,
+          category:       p.category,
+          serials,
+          unitCost:       p.unitCost || 0,
+          freightPerUnit: parseFloat(freightPerUnit.toFixed(4)),
+          landedPerUnit,
+        };
       });
 
-      // Directly write the shipment — bypasses the serial-required check in createShipment
-      const shipment = {
-        id:         ts,
-        supplier:   order.supplier,
-        location:   loc,
-        expectedBy: expected,
-        poNumber:   order.poNumber,
-        status:     'in-transit',
-        createdAt:  new Date().toISOString(),
-        products:   shipmentProducts,
-      };
-      DB.addShipment(shipment);
-      DB.updateOrder(orderId, { status: 'in-transit' });
+      DB.addShipment({
+        id:              ts,
+        supplier:        order.supplier,
+        location:        loc,
+        expectedBy:      expected,
+        poNumber:        order.poNumber,
+        status:          'in-transit',
+        createdAt:       new Date().toISOString(),
+        products:        shipmentProducts,
+        freightSupplier: freightSupplier,
+        freightPO:       freightPO,
+        freightCost:     freightCost,
+        orderId:         orderId,
+      });
+      DB.updateOrder(orderId, { status: 'in-transit', freightCost, freightSupplier, freightPO });
       if (loc) DB.addCustomLocation(loc);
 
       overlay.remove();
       UI.renderOrderList();
       UI.renderTransitList();
       UI.renderDashboard();
-      UI.showAlert(`Shipment registered — ${order.products.reduce((a,p)=>a+p.qty,0)} units from ${order.supplier} en route to ${loc}`, 'success');
+      UI.showAlert(
+        `Shipment registered — ${totalUnits} units en route to ${loc}` +
+        (freightCost > 0 ? ` · Freight ${fmt$(freightCost)} split across ${order.products.length} product line${order.products.length!==1?'s':''}` : ''),
+        'success'
+      );
     });
   };
 
