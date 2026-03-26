@@ -632,5 +632,43 @@ const Inventory = (() => {
     if (cost != null) DB.setSerialCost(s, cost);
   }
 
-    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, CATEGORIES, PRODUCTS };
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, CATEGORIES, PRODUCTS };
+
+  function createOrder(opts) {
+    const { supplier, poNumber, expectedBy, products } = opts;
+    if (!supplier) throw new Error('Manufacturer / Supplier is required.');
+    if (!products || !products.length) throw new Error('At least one product is required.');
+    products.forEach(p => {
+      if (!p.product) throw new Error('Select a product for each row.');
+      if (!p.qty || parseInt(p.qty) < 1) throw new Error(`Enter a quantity for "${p.product || 'product'}".`);
+    });
+
+    const id = Date.now();
+    const finalPO = poNumber || `PO-${new Date().getFullYear()}-${String(id).slice(-5)}`;
+
+    // Lock prices into the PO system at order time
+    DB.savePO(finalPO, {
+      supplier,
+      date: new Date().toISOString(),
+      lines: products.map(p => ({ product: p.product, unitCost: p.unitCost != null ? parseFloat(p.unitCost) : null })),
+    });
+
+    const order = {
+      id,
+      supplier,
+      poNumber: finalPO,
+      expectedBy: expectedBy || '',
+      products: products.map(p => ({
+        product:  p.product,
+        category: p.category || '',
+        qty:      parseInt(p.qty),
+        unitCost: p.unitCost != null ? parseFloat(p.unitCost) : null,
+      })),
+      status:    'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    DB.addOrder(order);
+    return order;
+  }
 })();
