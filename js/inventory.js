@@ -469,13 +469,16 @@ const Inventory = (() => {
     shipment.products.forEach(p => {
       const key = p.product + '||' + location;
       const poNumber = shipment.poNumber || '';
-      // Apply locked PO price if applicable
-      let unitCost = p.unitCost != null ? p.unitCost : null;
-      if (poNumber) {
+      // Prefer the landed cost (unit cost + freight share) set at arrange-shipment time.
+      // Fall back to PO-locked price, then product unitCost, then null.
+      let unitCost = p.landedPerUnit != null ? p.landedPerUnit
+                   : p.unitCost     != null ? p.unitCost
+                   : null;
+      if (poNumber && unitCost == null) {
         const poCost = DB.getPOUnitCost(poNumber, p.product);
         if (poCost != null) unitCost = poCost;
-        p.serials.forEach(s => DB.setSerialPO(s, poNumber));
       }
+      if (poNumber) p.serials.forEach(s => DB.setSerialPO(s, poNumber));
       if (unitCost != null) p.serials.forEach(s => DB.setSerialCost(s, unitCost));
       DB.addMovement({
         id: Date.now() + Math.random(),
