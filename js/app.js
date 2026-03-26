@@ -332,6 +332,46 @@
     } catch (err) { UI.showAlert(err.message, 'error'); }
   }
 
+  // ── Products ─────────────────────────────────────────────────────────
+  function clearProductForm() {
+    ['name','category','supplier','threshold','notes'].forEach(f => {
+      const el = document.getElementById('prod-' + f); if (el) el.value = '';
+    });
+    const editId = document.getElementById('prod-edit-id'); if (editId) editId.value = '';
+    const btn = document.getElementById('btn-submit-product'); if (btn) btn.textContent = 'Save product';
+    const cancelBtn = document.getElementById('btn-cancel-product-edit'); if (cancelBtn) cancelBtn.style.display = 'none';
+  }
+
+  function submitProduct() {
+    const name = document.getElementById('prod-name')?.value.trim();
+    if (!name) { UI.showAlert('Product name is required.', 'error'); return; }
+
+    const editId = document.getElementById('prod-edit-id')?.value;
+    const threshold = document.getElementById('prod-threshold')?.value;
+    const data = {
+      name,
+      category:         document.getElementById('prod-category')?.value.trim()  || '',
+      supplier:         document.getElementById('prod-supplier')?.value.trim()   || '',
+      defaultThreshold: threshold !== '' && threshold != null ? parseInt(threshold) : null,
+      notes:            document.getElementById('prod-notes')?.value.trim()      || '',
+    };
+
+    if (editId) {
+      DB.updateProductRecord(parseInt(editId), data);
+      UI.showAlert(`Product "${name}" updated`, 'success');
+    } else {
+      const exists = DB.getProductRecords().find(r => r.name.toLowerCase() === name.toLowerCase());
+      if (exists) { UI.showAlert(`Product "${name}" already has a record.`, 'error'); return; }
+      DB.addProductRecord({ id: Date.now(), ...data, createdAt: new Date().toISOString() });
+      UI.showAlert(`Product "${name}" saved`, 'success');
+    }
+
+    clearProductForm();
+    Inventory.refreshProducts();
+    UI.renderProductList();
+    UI.populateCategoryFilters();
+  }
+
   // ── Suppliers ─────────────────────────────────────────────────────────
   function clearSupplierForm() {
     ['name','contactName','email','phone','website','address','paymentTerms','leadTimeDays','currency','notes'].forEach(f => {
@@ -963,7 +1003,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','suppliers','orders','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','reports','lookup','history'];
+  const VIEWS = ['dashboard','products','suppliers','orders','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -976,6 +1016,7 @@
     });
     UI.hideAlert();
     if (view === 'dashboard')  UI.renderDashboard();
+    if (view === 'products')   UI.renderProductList();
     if (view === 'suppliers')  UI.renderSupplierList();
     if (view === 'orders')     { UI.populateDataLists(); if (!ordRows.length) ordRows=[newOrdRow()]; renderOrdRows(); UI.renderOrderList(); }
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
@@ -1027,6 +1068,8 @@
   bind('btn-add-transit-product','click',() => { trRows.push(newTrRow()); renderTrRows(); });
   bind('btn-add-out-product',   'click', () => { outRows.push(newOutRow()); renderOutRows(); });
   bind('btn-submit-in',         'click', submitStockIn);
+  bind('btn-submit-product',    'click', submitProduct);
+  bind('btn-cancel-product-edit','click', () => { clearProductForm(); });
   bind('btn-submit-supplier',   'click', submitSupplier);
   bind('btn-cancel-supplier-edit', 'click', () => { clearSupplierForm(); document.getElementById('btn-cancel-supplier-edit').style.display='none'; });
   bind('btn-submit-order',      'click', submitOrder);
