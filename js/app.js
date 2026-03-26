@@ -332,6 +332,150 @@
     } catch (err) { UI.showAlert(err.message, 'error'); }
   }
 
+  // ── Orders ────────────────────────────────────────────────────────────
+  let ordRows = [];
+  let _ordCounter = 0;
+  function newOrdRow() { return { id: 'ord' + (++_ordCounter), product: '', category: '', qty: '', unitCost: null }; }
+
+  function buildOrderRowCard(row, idx, total) {
+    const productOptions = Inventory.PRODUCTS.map(p =>
+      `<option value="${esc(p.name)}"${row.product === p.name ? ' selected' : ''}>${esc(p.name)}</option>`
+    ).join('');
+    const isOther = row.product === 'Other' || (row.product && !Inventory.PRODUCTS.find(p => p.name === row.product));
+    const autoCategory = Inventory.PRODUCTS.find(p => p.name === row.product)?.category || row.category || '';
+    return `
+    <div class="product-row-card" id="ord-rowcard-${row.id}">
+      <div class="product-row-header">
+        <span class="product-row-num">Product ${idx + 1}</span>
+        ${total > 1 ? `<button class="btn-remove-row" data-ordrowid="${row.id}">×</button>` : ''}
+      </div>
+      <div class="form-grid g3" style="margin-bottom:10px;">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Product *</label>
+          <select class="fi" id="${row.id}-ord-product">
+            <option value="">Select product...</option>
+            ${productOptions}
+          </select>
+          <input class="fi fi-mono" id="${row.id}-ord-product-custom"
+            placeholder="Enter custom product name"
+            style="margin-top:6px;display:${isOther ? 'block' : 'none'};"
+            value="${isOther && row.product !== 'Other' ? esc(row.product) : ''}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input class="fi" id="${row.id}-ord-category" value="${esc(autoCategory)}"
+            readonly style="background:var(--bg-2);color:var(--text-muted);cursor:default;"
+            placeholder="Auto-filled from product" />
+        </div>
+      </div>
+      <div class="form-grid g3">
+        <div class="form-group">
+          <label class="form-label">Quantity *</label>
+          <input class="fi" id="${row.id}-ord-qty" type="number" min="1" step="1"
+            value="${row.qty || ''}" placeholder="e.g. 50" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unit cost <span style="font-weight:400;color:var(--text-hint)">(locked at order time)</span></label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--text-muted);font-size:13px;">$</span>
+            <input class="fi" id="${row.id}-ord-cost" type="number" min="0" step="0.01"
+              style="width:140px;" placeholder="0.00"
+              value="${row.unitCost != null ? row.unitCost : ''}" />
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function wireOrdRow(rowId) {
+    const sel    = document.getElementById(`${rowId}-ord-product`);
+    const custom = document.getElementById(`${rowId}-ord-product-custom`);
+    const catEl  = document.getElementById(`${rowId}-ord-category`);
+    const qtyEl  = document.getElementById(`${rowId}-ord-qty`);
+    const costEl = document.getElementById(`${rowId}-ord-cost`);
+    if (sel) {
+      sel.addEventListener('change', () => {
+        const row = ordRows.find(r => r.id === rowId);
+        if (!row) return;
+        const isOther = sel.value === 'Other';
+        if (custom) custom.style.display = isOther ? 'block' : 'none';
+        const def = Inventory.PRODUCTS.find(p => p.name === sel.value);
+        if (catEl) catEl.value = def?.category || '';
+        if (!isOther) { row.product = sel.value; row.category = def?.category || ''; }
+        else row.product = custom?.value.trim() || 'Other';
+      });
+    }
+    if (custom) custom.addEventListener('input', () => { const row = ordRows.find(r=>r.id===rowId); if(row) row.product=custom.value.trim()||'Other'; });
+    if (qtyEl)  qtyEl.addEventListener('input',  () => { const row = ordRows.find(r=>r.id===rowId); if(row) row.qty=parseInt(qtyEl.value)||''; });
+    if (costEl) costEl.addEventListener('input',  () => { const row = ordRows.find(r=>r.id===rowId); if(row) row.unitCost=costEl.value!==''?parseFloat(costEl.value):null; });
+  }
+
+  function renderOrdRows() {
+    const c = document.getElementById('order-product-rows');
+    if (!c) return;
+    c.innerHTML = ordRows.map((r, i) => buildOrderRowCard(r, i, ordRows.length)).join('');
+    ordRows.forEach(r => wireOrdRow(r.id));
+    c.querySelectorAll('.btn-remove-row').forEach(btn => btn.addEventListener('click', () => {
+      if (ordRows.length <= 1) return;
+      ordRows = ordRows.filter(r => r.id !== btn.dataset.ordrowid);
+      renderOrdRows();
+    }));
+  }
+
+  function clearOrderForm() {
+    ['ord-supplier','ord-po','ord-expected'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    ordRows = [newOrdRow()]; renderOrdRows();
+  }
+
+  function submitOrder() {
+    // Sync fields from DOM
+    ordRows.forEach(row => {
+      const qtyEl  = document.getElementById(`${row.id}-ord-qty`);
+      const costEl = document.getElementById(`${row.id}-ord-cost`);
+      const selEl  = document.getElementById(`${row.id}-ord-product`);
+      const customEl = document.getElementById(`${row.id}-ord-product-custom`);
+      if (selEl) row.product = selEl.value === 'Other' ? (customEl?.value.trim()||'Other') : selEl.value;
+      if (qtyEl)  row.qty      = parseInt(qtyEl.value) || '';
+      if (costEl) row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+    });
+    try {
+      const order = Inventory.createOrder({
+        supplier:   document.getElementById('ord-supplier').value.trim(),
+        poNumber:   document.getElementById('ord-po').value.trim(),
+        expectedBy: document.getElementById('ord-expected').value,
+        products:   ordRows,
+      });
+      clearOrderForm();
+      UI.renderOrderList();
+      UI.refreshSmartSelects();
+      const total = order.products.reduce((a, p) => a + p.qty, 0);
+      UI.showAlert(`Order placed — ${total} unit${total!==1?'s':''} on PO ${order.poNumber}`, 'success');
+    } catch(err) { UI.showAlert(err.message, 'error'); }
+  }
+
+  // Called by renderOrderList "Arrange Shipment" button
+  window.arrangeShipmentFromOrder = function(orderId) {
+    const order = DB.getOrders().find(o => o.id === orderId);
+    if (!order) return;
+    DB.updateOrder(orderId, { status: 'in-transit' });
+    // Pre-fill transit form from order
+    const supEl = document.getElementById('tr-supplier'); if (supEl) supEl.value = order.supplier;
+    const poEl  = document.getElementById('tr-po');       if (poEl)  poEl.value  = order.poNumber;
+    const expEl = document.getElementById('tr-expected'); if (expEl && order.expectedBy) expEl.value = order.expectedBy;
+    // Build transit rows from order products (no serials yet — user adds them)
+    _trCounter = _trCounter || 0;
+    trRows = order.products.map(p => ({
+      id: 'tr' + (++_trCounter),
+      product: p.product, category: p.category,
+      serials: [], serialCosts: {}, noSerial: false, qty: '',
+      unitCost: p.unitCost,
+    }));
+    showViewTracked('transit');
+    renderTrRows();
+    UI.renderOrderList();
+    UI.showAlert(`Order ${order.poNumber} moved to In Transit — add serial numbers and register the shipment`, 'info');
+  };
+
   // ── In Transit ────────────────────────────────────────────────────────
   let trRows = [];
   let _trCounter = 0;
@@ -627,7 +771,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','reports','lookup','history'];
+  const VIEWS = ['dashboard','orders','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -640,6 +784,7 @@
     });
     UI.hideAlert();
     if (view === 'dashboard')  UI.renderDashboard();
+    if (view === 'orders')     { UI.populateDataLists(); if (!ordRows.length) ordRows=[newOrdRow()]; renderOrdRows(); UI.renderOrderList(); }
     if (view === 'transit')    { UI.populateDataLists(); if (!trRows.length) trRows=[newTrRow()]; renderTrRows(); UI.renderTransitList(); }
     if (view === 'stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     if (view === 'deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
@@ -685,9 +830,11 @@
   function bind(id, ev, fn) { const el=document.getElementById(id); if(el) el.addEventListener(ev, fn); }
 
   bind('btn-add-product',       'click', () => { inRows.push(newInRow()); renderInRows(); });
+  bind('btn-add-order-product', 'click', () => { ordRows.push(newOrdRow()); renderOrdRows(); });
   bind('btn-add-transit-product','click',() => { trRows.push(newTrRow()); renderTrRows(); });
   bind('btn-add-out-product',   'click', () => { outRows.push(newOutRow()); renderOutRows(); });
   bind('btn-submit-in',         'click', submitStockIn);
+  bind('btn-submit-order',      'click', submitOrder);
   bind('btn-submit-transit',    'click', submitTransit);
   bind('btn-submit-out',        'click', submitStockOut);
   bind('btn-export-inv',        'click', UI.exportInventoryCSV);
