@@ -1242,6 +1242,7 @@ const UI = (() => {
   function initSmartSelects() {
     SmartSelect('in-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
     SmartSelect('tr-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
+    SmartSelect('ord-supplier', Inventory.getSuppliers,  DB.addCustomSupplier);
     SmartSelect('in-loc',       Inventory.getLocations,  DB.addCustomLocation);
     SmartSelect('tr-loc',       Inventory.getLocations,  DB.addCustomLocation);
   }
