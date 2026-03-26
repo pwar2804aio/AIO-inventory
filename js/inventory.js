@@ -573,8 +573,9 @@ const Inventory = (() => {
     return [...new Set([...fromData, ...DB.getCustomLocations()])].sort();
   }
   function getSuppliers() {
-    const fromData = [...DB.getData().movements.filter(m => m.supplier).map(m => m.supplier), ...DB.getData().shipments.filter(s => s.supplier).map(s => s.supplier)].filter(Boolean);
-    return [...new Set([...fromData, ...DB.getCustomSuppliers()])].sort();
+    const fromData    = [...DB.getData().movements.filter(m => m.supplier).map(m => m.supplier), ...DB.getData().shipments.filter(s => s.supplier).map(s => s.supplier)].filter(Boolean);
+    const fromRecords = DB.getSupplierRecords().map(s => s.name).filter(Boolean);
+    return [...new Set([...fromData, ...fromRecords, ...DB.getCustomSuppliers()])].sort();
   }
   function getProducts()  { return [...new Set(DB.getData().movements.map(m => m.product))].sort(); }
   function getCustomers() { return [...new Set(DB.getData().movements.filter(m => m.customer).map(m => m.customer))].sort(); }
