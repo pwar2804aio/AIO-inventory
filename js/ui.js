@@ -1473,25 +1473,19 @@ const UI = (() => {
     SmartSelect('in-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
     SmartSelect('tr-supplier',  Inventory.getSuppliers,  DB.addCustomSupplier);
     SmartSelect('ord-supplier', Inventory.getSuppliers,  DB.addCustomSupplier);
+    SmartSelect('prod-supplier',Inventory.getSuppliers,  DB.addCustomSupplier);
 
-    // Products form — category select and supplier datalist
+    // Products form — category select and product name datalist
     const prodCat = document.getElementById('prod-category');
     if (prodCat && prodCat.options.length <= 1) {
       Inventory.CATEGORIES.forEach(c => {
         const opt = document.createElement('option'); opt.value = c; opt.textContent = c; prodCat.appendChild(opt);
       });
     }
-    // Products name datalist — all known product names
     const prodNameList = document.getElementById('prod-name-list');
     if (prodNameList) {
       prodNameList.innerHTML = Inventory.PRODUCTS.filter(p => p.name !== 'Other')
         .map(p => `<option value="${p.name}">`).join('');
-    }
-    // Products supplier datalist
-    const prodSuppList = document.getElementById('prod-supplier-list');
-    if (prodSuppList) {
-      prodSuppList.innerHTML = Inventory.getSuppliers()
-        .map(s => `<option value="${s}">`).join('');
     }
     SmartSelect('in-loc',       Inventory.getLocations,  DB.addCustomLocation);
     SmartSelect('tr-loc',       Inventory.getLocations,  DB.addCustomLocation);
@@ -1499,7 +1493,7 @@ const UI = (() => {
 
   // Refresh all smart selects (called after stock in/transit so new values appear)
   function refreshSmartSelects() {
-    ['in-supplier','tr-supplier','ord-supplier','in-loc','tr-loc'].forEach(id => {
+    ['in-supplier','tr-supplier','ord-supplier','prod-supplier','in-loc','tr-loc'].forEach(id => {
       const input = document.getElementById(id);
       if (input && input._ssInit) {
         const wrap = input.parentNode;
