@@ -506,7 +506,8 @@
     // Show a modal asking only for destination location + expected date
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
-    const locationOptions = Inventory.getLocations().map(l => `<option value="${l}">`).join('');
+    const knownLocations = Inventory.getLocations();
+    const locationOpts = knownLocations.map(l => `<option value="${l}">${l}</option>`).join('');
     overlay.innerHTML = `
       <div class="modal-box">
         <div class="modal-title">Register shipment</div>
@@ -515,8 +516,13 @@
         </div>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="form-label">Destination location *</label>
-          <input class="fi" id="arrange-loc" placeholder="e.g. SF Warehouse" list="arrange-loc-list" autocomplete="off" />
-          <datalist id="arrange-loc-list">${locationOptions}</datalist>
+          <select class="fi" id="arrange-loc">
+            <option value="">Select location...</option>
+            ${locationOpts}
+            <option value="__new__">＋ Enter new location...</option>
+          </select>
+          <input class="fi" id="arrange-loc-custom" placeholder="Type new location name"
+            style="margin-top:6px;display:none;" />
         </div>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="form-label">Expected by</label>
@@ -529,8 +535,14 @@
       </div>`;
     document.body.appendChild(overlay);
 
-    const locInput = document.getElementById('arrange-loc');
-    setTimeout(() => locInput && locInput.focus(), 50);
+    // Show/hide custom input when "Enter new location" is picked
+    const locSel    = document.getElementById('arrange-loc');
+    const locCustom = document.getElementById('arrange-loc-custom');
+    locSel.addEventListener('change', () => {
+      const isNew = locSel.value === '__new__';
+      locCustom.style.display = isNew ? 'block' : 'none';
+      if (isNew) locCustom.focus();
+    });
 
     function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -538,7 +550,10 @@
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
     document.getElementById('arrange-confirm-btn').addEventListener('click', () => {
-      const loc      = document.getElementById('arrange-loc').value.trim();
+      const sel = document.getElementById('arrange-loc');
+      const loc = sel.value === '__new__'
+        ? document.getElementById('arrange-loc-custom').value.trim()
+        : sel.value;
       const expected = document.getElementById('arrange-expected').value;
       if (!loc) { UI.showAlert('Destination location is required.', 'error'); return; }
 
