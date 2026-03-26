@@ -28,7 +28,7 @@ const CATEGORIES = [
   'Other',
 ];
 
-const PRODUCTS = [
+const HARDCODED_PRODUCTS = [
   { name: 'Volcora Auto Open Cash Drawer',         category: 'Cash Drawer' },
   { name: 'Adyen AMS1',                            category: 'Payment Terminal' },
   { name: 'Sunmi D3 Pro Separate Monitor',         category: 'Customer-Facing Display' },
@@ -55,6 +55,22 @@ const PRODUCTS = [
   { name: 'Kiosk Adyen Mount',                     category: 'Kiosk Mount' },
   { name: 'Other',                                 category: 'Other' },
 ];
+
+let PRODUCTS = [...HARDCODED_PRODUCTS];
+function refreshProducts() {
+  const records = DB.getProductRecords();
+  const merged  = [...HARDCODED_PRODUCTS];
+  records.forEach(r => {
+    if (!merged.find(h => h.name === r.name)) {
+      merged.push({ name: r.name, category: r.category || 'Other' });
+    } else {
+      // Update category/supplier on existing entry
+      const idx = merged.findIndex(h => h.name === r.name);
+      if (idx > -1) merged[idx] = { ...merged[idx], category: r.category || merged[idx].category, supplier: r.supplier };
+    }
+  });
+  PRODUCTS = merged;
+}
 
 const Inventory = (() => {
 
@@ -636,7 +652,8 @@ const Inventory = (() => {
     if (cost != null) DB.setSerialCost(s, cost);
   }
 
-    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, CATEGORIES, PRODUCTS };
+    DB.onReady(() => refreshProducts());
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
 
   function createOrder(opts) {
     const { supplier, poNumber, expectedBy, products } = opts;
