@@ -19,6 +19,7 @@ const UI = (() => {
     const stats    = Inventory.getStats();
     const lowItems = Inventory.getLowStockItems();
     const { movements } = DB.getData();
+    const recent = [...movements].reverse().slice(0, 10);
     const byProduct = Inventory.getStockByProduct();
 
     document.getElementById('stats-row').innerHTML = `
