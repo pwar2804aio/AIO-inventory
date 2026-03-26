@@ -38,6 +38,7 @@
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+      <button class="nav-btn" data-view="products">Products</button>
       <button class="nav-btn" data-view="suppliers">Suppliers</button>
       <div class="nav-dropdown">
         <button class="nav-btn nav-dropdown-toggle" data-dropdown="orders-group">
@@ -104,6 +105,51 @@
       <div class="panel"><div class="panel-title">Low stock alerts</div><div id="dash-low"></div></div>
     </div>
     <div class="panel"><div class="panel-title">Stock by location</div><div id="dash-locations"></div></div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section id="v-products" class="view" style="display:none;">
+    <div class="panel-toolbar">
+      <span class="toolbar-title">Products</span>
+    </div>
+    <div class="panel" id="product-form-panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Add / edit product</div>
+      <input type="hidden" id="prod-edit-id" />
+      <div class="form-grid g3">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label" for="prod-name">Product name *</label>
+          <input class="fi" id="prod-name" placeholder="e.g. Sunmi D3 Pro" list="prod-name-list" autocomplete="off" />
+          <datalist id="prod-name-list"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="prod-threshold">Stock alert threshold</label>
+          <input class="fi" id="prod-threshold" type="number" min="0" placeholder="e.g. 3 (default)" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="prod-category">Category</label>
+          <select class="fi" id="prod-category">
+            <option value="">Select category...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="prod-supplier">Primary supplier</label>
+          <input class="fi" id="prod-supplier" placeholder="e.g. Sunmi" list="prod-supplier-list" autocomplete="off" />
+          <datalist id="prod-supplier-list"></datalist>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:6px;">
+        <label class="form-label" for="prod-notes">Notes</label>
+        <textarea class="fi" id="prod-notes" rows="2" placeholder="Any notes about this product..." style="resize:vertical;font-family:inherit;"></textarea>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-orange" id="btn-submit-product">Save product</button>
+        <button class="btn btn-ghost btn-sm" id="btn-cancel-product-edit" style="display:none;">Cancel edit</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">All products</div>
+      <div id="product-list"></div>
+    </div>
   </section>
 
   <!-- SUPPLIERS -->
@@ -681,13 +727,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=42"></script>
-<script src="js/auth-ui.js?v=42"></script>
-<script src="js/scanner.js?v=42"></script>
-<script src="js/db.js?v=42"></script>
-<script src="js/inventory.js?v=42"></script>
-<script src="js/reports.js?v=42"></script>
-<script src="js/ui.js?v=42"></script>
-<script src="js/app.js?v=42"></script>
+<script src="js/auth.js?v=43"></script>
+<script src="js/auth-ui.js?v=43"></script>
+<script src="js/scanner.js?v=43"></script>
+<script src="js/db.js?v=43"></script>
+<script src="js/inventory.js?v=43"></script>
+<script src="js/reports.js?v=43"></script>
+<script src="js/ui.js?v=43"></script>
+<script src="js/app.js?v=43"></script>
 </body>
 </html>
