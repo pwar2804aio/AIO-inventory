@@ -135,6 +135,79 @@ const UI = (() => {
       : '<div class="empty">No location data yet</div>';
   }
 
+  // ── Suppliers ──────────────────────────────────────────────────────────
+  function renderSupplierList() {
+    const suppliers = DB.getSupplierRecords().slice().sort((a,b) => a.name.localeCompare(b.name));
+    const orders    = DB.getOrders();
+    const container = document.getElementById('supplier-list');
+    if (!container) return;
+
+    const fmt$ = n => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }) : '—';
+
+    if (!suppliers.length) {
+      container.innerHTML = '<div class="empty" style="padding:1.5rem">No suppliers added yet</div>';
+      return;
+    }
+
+    container.innerHTML = suppliers.map(s => {
+      // Tally orders and spend for this supplier (match by name)
+      const supplierOrders = orders.filter(o => o.supplier === s.name);
+      const orderCount     = supplierOrders.length;
+      const totalSpend     = supplierOrders.reduce((a, o) =>
+        a + o.products.reduce((b, p) => b + (p.qty * (p.unitCost || 0)), 0), 0);
+
+      return `<div class="supplier-card" id="supp-card-${s.id}">
+        <div class="supplier-card-header">
+          <div class="supplier-card-name">${esc(s.name)}</div>
+          <div class="supplier-card-actions">
+            <button class="btn btn-ghost btn-xs" data-edit-supplier="${s.id}">Edit</button>
+            <button class="btn btn-ghost btn-xs btn-danger-ghost" data-delete-supplier="${s.id}">Remove</button>
+          </div>
+        </div>
+        <div class="supplier-card-meta">
+          ${s.contactName  ? `<span>👤 ${esc(s.contactName)}</span>` : ''}
+          ${s.email        ? `<span>✉ <a href="mailto:${esc(s.email)}">${esc(s.email)}</a></span>` : ''}
+          ${s.phone        ? `<span>📞 ${esc(s.phone)}</span>` : ''}
+          ${s.website      ? `<span>🌐 <a href="${esc(s.website)}" target="_blank">${esc(s.website)}</a></span>` : ''}
+        </div>
+        ${s.address ? `<div class="supplier-card-address">📍 ${esc(s.address)}</div>` : ''}
+        ${s.notes   ? `<div class="supplier-card-notes">${esc(s.notes)}</div>` : ''}
+        <div class="supplier-card-stats">
+          <div class="supplier-stat"><div class="supplier-stat-label">Total orders</div><div class="supplier-stat-val">${orderCount}</div></div>
+          <div class="supplier-stat"><div class="supplier-stat-label">Total spend</div><div class="supplier-stat-val">${fmt$(totalSpend)}</div></div>
+          ${s.paymentTerms  ? `<div class="supplier-stat"><div class="supplier-stat-label">Payment terms</div><div class="supplier-stat-val">${esc(s.paymentTerms)}</div></div>` : ''}
+          ${s.leadTimeDays  ? `<div class="supplier-stat"><div class="supplier-stat-label">Lead time</div><div class="supplier-stat-val">${esc(s.leadTimeDays)} days</div></div>` : ''}
+          ${s.currency      ? `<div class="supplier-stat"><div class="supplier-stat-label">Currency</div><div class="supplier-stat-val">${esc(s.currency)}</div></div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-delete-supplier]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sup = DB.getSupplierRecords().find(s => s.id == btn.dataset.deleteSupplier);
+        if (sup && confirm(`Remove supplier "${sup.name}"?`)) {
+          DB.removeSupplier(sup.id);
+          renderSupplierList();
+          UI.refreshSmartSelects();
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-edit-supplier]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sup = DB.getSupplierRecords().find(s => s.id == btn.dataset.editSupplier);
+        if (!sup) return;
+        // Populate form for editing
+        const fields = ['name','contactName','email','phone','website','address','paymentTerms','leadTimeDays','currency','notes'];
+        fields.forEach(f => { const el = document.getElementById('supp-' + f); if (el) el.value = sup[f] || ''; });
+        document.getElementById('supp-edit-id').value = sup.id;
+        document.getElementById('btn-submit-supplier').textContent = 'Update supplier';
+        document.getElementById('supp-name').focus();
+        document.getElementById('supplier-form-panel').scrollIntoView({ behavior:'smooth' });
+      });
+    });
+  }
+
   // ── Orders ─────────────────────────────────────────────────────────────
   function renderOrderList() {
     const orders = DB.getOrders().slice().reverse();
@@ -1267,5 +1340,5 @@ const UI = (() => {
     });
   }
 
-    return { showAlert, hideAlert, renderDashboard, renderOrderList, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
+    return { showAlert, hideAlert, renderDashboard, renderSupplierList, renderOrderList, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
