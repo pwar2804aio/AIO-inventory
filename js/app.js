@@ -502,23 +502,79 @@
   window.arrangeShipmentFromOrder = function(orderId) {
     const order = DB.getOrders().find(o => o.id === orderId);
     if (!order) return;
-    DB.updateOrder(orderId, { status: 'in-transit' });
-    // Pre-fill transit form from order
-    const supEl = document.getElementById('tr-supplier'); if (supEl) supEl.value = order.supplier;
-    const poEl  = document.getElementById('tr-po');       if (poEl)  poEl.value  = order.poNumber;
-    const expEl = document.getElementById('tr-expected'); if (expEl && order.expectedBy) expEl.value = order.expectedBy;
-    // Build transit rows from order products (no serials yet — user adds them)
-    _trCounter = _trCounter || 0;
-    trRows = order.products.map(p => ({
-      id: 'tr' + (++_trCounter),
-      product: p.product, category: p.category,
-      serials: [], serialCosts: {}, noSerial: false, qty: '',
-      unitCost: p.unitCost,
-    }));
-    showViewTracked('transit');
-    renderTrRows();
-    UI.renderOrderList();
-    UI.showAlert(`Order ${order.poNumber} moved to In Transit — add serial numbers and register the shipment`, 'info');
+
+    // Show a modal asking only for destination location + expected date
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const locationOptions = Inventory.getLocations().map(l => `<option value="${l}">`).join('');
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-title">Register shipment</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">
+          ${order.products.reduce((a,p)=>a+p.qty,0)} units · ${esc(order.supplier)} · ${esc(order.poNumber)}
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Destination location *</label>
+          <input class="fi" id="arrange-loc" placeholder="e.g. SF Warehouse" list="arrange-loc-list" autocomplete="off" />
+          <datalist id="arrange-loc-list">${locationOptions}</datalist>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">Expected by</label>
+          <input class="fi" id="arrange-expected" type="date" value="${order.expectedBy || ''}" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="arrange-cancel-btn">Cancel</button>
+          <button class="btn btn-orange" id="arrange-confirm-btn">Register in transit</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const locInput = document.getElementById('arrange-loc');
+    setTimeout(() => locInput && locInput.focus(), 50);
+
+    function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    document.getElementById('arrange-cancel-btn').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById('arrange-confirm-btn').addEventListener('click', () => {
+      const loc      = document.getElementById('arrange-loc').value.trim();
+      const expected = document.getElementById('arrange-expected').value;
+      if (!loc) { UI.showAlert('Destination location is required.', 'error'); return; }
+
+      // Generate NS- placeholder serials from qty per product (same pattern as no-serial stock)
+      const ts = Date.now();
+      const shipmentProducts = order.products.map((p, pi) => {
+        const tag = (p.product || 'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
+        const serials = Array.from({ length: p.qty }, (_, i) =>
+          `NS-${tag}-${ts + pi}-${i + 1}`
+        );
+        // Lock cost from order into each serial
+        if (p.unitCost != null) serials.forEach(s => DB.setSerialCost(s, p.unitCost));
+        return { product: p.product, category: p.category, serials };
+      });
+
+      // Directly write the shipment — bypasses the serial-required check in createShipment
+      const shipment = {
+        id:         ts,
+        supplier:   order.supplier,
+        location:   loc,
+        expectedBy: expected,
+        poNumber:   order.poNumber,
+        status:     'in-transit',
+        createdAt:  new Date().toISOString(),
+        products:   shipmentProducts,
+      };
+      DB.addShipment(shipment);
+      DB.updateOrder(orderId, { status: 'in-transit' });
+      if (loc) DB.addCustomLocation(loc);
+
+      overlay.remove();
+      UI.renderOrderList();
+      UI.renderTransitList();
+      UI.renderDashboard();
+      UI.showAlert(`Shipment registered — ${order.products.reduce((a,p)=>a+p.qty,0)} units from ${order.supplier} en route to ${loc}`, 'success');
+    });
   };
 
   // ── In Transit ────────────────────────────────────────────────────────
