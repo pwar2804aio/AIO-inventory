@@ -182,6 +182,7 @@ function _refreshView() {
     else if (_currentView==='stock-list') { UI.populateStockListFilters(); UI.renderStockList(); }
     else if (_currentView==='deployed')   { UI.populateDeployedFilters(); UI.renderDeployed(); }
     else if (_currentView==='history')    UI.renderHistory();
-    else if (_currentView==='transit')    UI.renderTransitList();\n    else if (_currentView==='orders')     UI.renderOrderList();
+    else if (_currentView==='transit')    UI.renderTransitList();
+    else if (_currentView==='orders')     UI.renderOrderList();
   } catch(e) {}
 }
