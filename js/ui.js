@@ -135,6 +135,59 @@ const UI = (() => {
       : '<div class="empty">No location data yet</div>';
   }
 
+  // ── Orders ─────────────────────────────────────────────────────────────
+  function renderOrderList() {
+    const orders = DB.getOrders().slice().reverse();
+    const badge  = document.getElementById('order-count-badge');
+    const pending = orders.filter(o => o.status === 'pending').length;
+    if (badge) badge.textContent = pending > 0 ? `(${pending})` : '';
+
+    const container = document.getElementById('order-list');
+    if (!container) return;
+    if (!orders.length) { container.innerHTML = '<div class="empty">No orders placed yet</div>'; return; }
+
+    const statusLabel = { pending: '⏳ Pending', 'in-transit': '✈ In Transit', received: '✓ Received', cancelled: '✗ Cancelled' };
+    const statusClass = { pending: 'b-low', 'in-transit': 'transit', received: 'b-in', cancelled: 'b-zero' };
+
+    container.innerHTML = orders.map(o => {
+      const totalQty = o.products.reduce((a, p) => a + p.qty, 0);
+      const totalVal = o.products.reduce((a, p) => a + (p.qty * (p.unitCost || 0)), 0);
+      const fmt$ = n => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+      return `<div class="shipment-card">
+        <div class="shipment-card-header">
+          <div>
+            <div class="shipment-card-title">
+              ${esc(o.supplier)} <span class="po-lock-badge">🔒 ${esc(o.poNumber)}</span>
+              <span class="badge ${statusClass[o.status] || 'b-low'}" style="margin-left:6px;font-size:10px;">${statusLabel[o.status] || o.status}</span>
+            </div>
+            <div class="shipment-card-meta">
+              ${totalQty} unit${totalQty !== 1 ? 's' : ''} · ${o.products.length} product${o.products.length !== 1 ? 's' : ''} · Total value ${fmt$(totalVal)} · Ordered ${fmtDate(o.createdAt)}${o.expectedBy ? ' · Expected ' + new Date(o.expectedBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+            </div>
+          </div>
+          <div class="shipment-actions">
+            ${o.status === 'pending' ? `<button class="btn btn-success btn-xs" data-arrange-order="${o.id}">Arrange Shipment</button>
+            <button class="btn btn-ghost btn-xs" data-cancel-order="${o.id}">Cancel</button>` : ''}
+            ${o.status === 'in-transit' ? `<span style="font-size:11px;color:var(--text-muted);">Shipment registered</span>` : ''}
+          </div>
+        </div>
+        <div class="shipment-products">
+          ${o.products.map(p => `<span class="shipment-product-tag"><strong>${esc(p.product)}</strong> · ${p.qty} unit${p.qty !== 1 ? 's' : ''}${p.unitCost != null ? ' · $' + p.unitCost.toFixed(2) + '/unit' : ''}</span>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-arrange-order]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof window.arrangeShipmentFromOrder === 'function') window.arrangeShipmentFromOrder(parseInt(btn.dataset.arrangeOrder));
+      });
+    });
+    container.querySelectorAll('[data-cancel-order]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Cancel this order?')) { DB.updateOrder(parseInt(btn.dataset.cancelOrder), { status: 'cancelled' }); renderOrderList(); }
+      });
+    });
+  }
+
   // ── In Transit ────────────────────────────────────────────────────────
   function renderTransitList() {
     const { shipments } = DB.getData();
@@ -1213,5 +1266,5 @@ const UI = (() => {
     });
   }
 
-    return { showAlert, hideAlert, renderDashboard, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
+    return { showAlert, hideAlert, renderDashboard, renderOrderList, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
