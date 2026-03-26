@@ -11,7 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
-  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [] };
+  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [] };
   let _db    = null;
   let _ready = false;
   let _onReadyCallbacks = [];
@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -67,7 +67,13 @@ const DB = (() => {
   function getData()             { return _data; }
   function addMovement(mv)       { _data.movements.push(mv); _save(); }
   function setThreshold(k, v)    { _data.thresholds[k] = v; _save(); }
-  function getThreshold(k)       { return _data.thresholds[k] !== undefined ? _data.thresholds[k] : 3; }
+  function getThreshold(k) {
+    if (_data.thresholds[k] !== undefined) return _data.thresholds[k];
+    const product = k.split('||')[0];
+    const rec = (_data.productRecords || []).find(p => p.name === product);
+    if (rec && rec.defaultThreshold != null) return rec.defaultThreshold;
+    return 3;
+  }
   function addShipment(s)        { _data.shipments.push(s); _save(); }
   function updateShipment(id,u)  { const i=_data.shipments.findIndex(s=>s.id===id); if(i>-1){_data.shipments[i]={..._data.shipments[i],...u};_save();} }
   function removeShipment(id)    { _data.shipments=_data.shipments.filter(s=>s.id!==id); _save(); }
@@ -137,6 +143,11 @@ const DB = (() => {
   function removeSupplier(id)    { if(!_data.suppliers) return; _data.suppliers=_data.suppliers.filter(s=>s.id!==id); _save(); }
   function getSupplierRecords()  { return _data.suppliers||[]; }
 
+  function addProductRecord(r)      { if(!_data.productRecords) _data.productRecords=[]; _data.productRecords.push(r); _save(); }
+  function updateProductRecord(id,u){ if(!_data.productRecords) return; const i=_data.productRecords.findIndex(r=>r.id===id); if(i>-1){_data.productRecords[i]={..._data.productRecords[i],...u};_save();} }
+  function removeProductRecord(id)  { if(!_data.productRecords) return; _data.productRecords=_data.productRecords.filter(r=>r.id!==id); _save(); }
+  function getProductRecords()      { return _data.productRecords||[]; }
+
   function exportJSON()          { return JSON.stringify(_data, null, 2); }
   function importJSON(str)       { const p=JSON.parse(str); if(!Array.isArray(p.movements)) throw new Error('Invalid format'); _data={shipments:[],serialCosts:{},purchaseOrders:{},...p}; _save(); }
 
@@ -177,7 +188,7 @@ const DB = (() => {
   function getCustomLocations() { return _data.customLocations || []; }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
