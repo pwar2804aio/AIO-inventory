@@ -45,26 +45,33 @@ const UI = (() => {
     // Build per-product condition counts from all in-stock serial rows
     const condMap = {};
     Inventory.getAllSerialRows().filter(r => r.status === 'in-stock').forEach(r => {
-      if (!condMap[r.product]) condMap[r.product] = { working: 0, rma: 0, tl: 0 };
-      if      (r.condition === 'rma')     condMap[r.product].rma++;
-      else if (r.condition === 'fail-tl') condMap[r.product].tl++;
-      else                                condMap[r.product].working++;
+      if (!condMap[r.product]) condMap[r.product] = { working: 0, testing: 0, faulty: 0, rma: 0, tl: 0 };
+      if      (r.condition === 'rma')           condMap[r.product].rma++;
+      else if (r.condition === 'fail-tl')       condMap[r.product].tl++;
+      else if (r.condition === 'needs-testing') condMap[r.product].testing++;
+      else if (r.condition === 'faulty')        condMap[r.product].faulty++;
+      else if (!r.condition)                    condMap[r.product].working++;
+      // 'used' intentionally not counted in any bucket — informational only
     });
     const grandWorking = Object.values(condMap).reduce((a, c) => a + c.working, 0);
+    const grandTesting = Object.values(condMap).reduce((a, c) => a + c.testing, 0);
+    const grandFaulty  = Object.values(condMap).reduce((a, c) => a + c.faulty,  0);
     const grandRMA     = Object.values(condMap).reduce((a, c) => a + c.rma, 0);
     const grandTL      = Object.values(condMap).reduce((a, c) => a + c.tl, 0);
 
     document.getElementById('dash-product-stock').innerHTML = byProduct.length
       ? `<table class="product-stock-table">
           <thead><tr>
-            <th style="width:22%">Product</th>
-            <th style="width:13%">Category</th>
-            <th style="width:9%" title="Total units in stock">Total</th>
-            <th style="width:9%;color:#1a7a3c" title="Units with no condition flag — ready to deploy">✅ Working</th>
-            <th style="width:9%;color:#9c2a00" title="Units flagged for return to manufacturer">⛔ RMA</th>
-            <th style="width:9%;color:#666" title="Units written off as total loss">🗑 TL</th>
-            <th style="width:8%">In transit</th>
-            <th style="width:10%">Avg cost</th>
+            <th style="width:20%">Product</th>
+            <th style="width:11%">Category</th>
+            <th style="width:7%" title="Total units in stock">Total</th>
+            <th style="width:8%;color:#1a7a3c" title="Units ready to deploy">✅ Working</th>
+            <th style="width:8%;color:#1a5080" title="Units in needs-testing">🔬 Testing</th>
+            <th style="width:7%;color:#7a5000" title="Units flagged faulty">⚠ Faulty</th>
+            <th style="width:7%;color:#9c2a00" title="Units for return">⛔ RMA</th>
+            <th style="width:6%;color:#666" title="Written off">🗑 TL</th>
+            <th style="width:7%">In transit</th>
+            <th style="width:8%">Avg cost</th>
             <th style="width:11%">Total value</th>
           </tr></thead>
           <tbody>
@@ -80,8 +87,10 @@ const UI = (() => {
                 </div>
               </td>
               <td><span class="cond-inline cond-inline-working">${c.working}</span></td>
-              <td>${c.rma > 0 ? `<span class="cond-inline cond-inline-rma">${c.rma}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
-              <td>${c.tl  > 0 ? `<span class="cond-inline cond-inline-tl">${c.tl}</span>`   : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${c.testing > 0 ? `<span class="cond-inline cond-inline-testing">${c.testing}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${c.faulty  > 0 ? `<span class="cond-inline cond-inline-faulty">${c.faulty}</span>`   : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${c.rma     > 0 ? `<span class="cond-inline cond-inline-rma">${c.rma}</span>`         : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${c.tl      > 0 ? `<span class="cond-inline cond-inline-tl">${c.tl}</span>`           : '<span style="color:var(--text-hint)">—</span>'}</td>
               <td>${p.inTransit > 0 ? `<span class="transit-pill">✈ ${p.inTransit}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
               <td style="font-size:12px">${fmt$(p.avgCost)}</td>
               <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(p.totalCost)}</td>
@@ -92,9 +101,11 @@ const UI = (() => {
               <td colspan="2" style="font-weight:700;font-size:12px;color:var(--text-muted);padding-top:10px;">Total</td>
               <td style="font-weight:700;font-size:13px;color:var(--success-text);padding-top:10px;">${grandTotalUnits}</td>
               <td style="font-weight:700;font-size:13px;color:#1a7a3c;padding-top:10px;">${grandWorking}</td>
+              <td style="font-weight:700;font-size:13px;color:#1a5080;padding-top:10px;">${grandTesting > 0 ? grandTesting : '—'}</td>
+              <td style="font-weight:700;font-size:13px;color:#7a5000;padding-top:10px;">${grandFaulty  > 0 ? grandFaulty  : '—'}</td>
               <td style="font-weight:700;font-size:13px;color:#9c2a00;padding-top:10px;">${grandRMA > 0 ? grandRMA : '—'}</td>
               <td style="font-weight:700;font-size:13px;color:#666;padding-top:10px;">${grandTL  > 0 ? grandTL  : '—'}</td>
-              <td colspan="2" style="padding-top:10px;"></td>
+              <td style="padding-top:10px;"></td>
               <td style="font-weight:700;font-size:13px;color:var(--aio-purple);padding-top:10px;">$${grandTotalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             </tr>
           </tfoot>
@@ -147,6 +158,45 @@ const UI = (() => {
          ${lowItems.map(v => `<tr><td>${esc(v.product)}</td><td><span class="loc-badge">${esc(v.location||'—')}</span></td><td><span class="badge ${v.inStock.size===0?'b-zero':'b-low'}">${v.inStock.size}</span></td></tr>`).join('')}
          </tbody></table>`
       : '<div class="empty" style="padding:1rem">All products well stocked</div>';
+
+    // ── Workshop summary ──────────────────────────────────────────────
+    const wkshpEl = document.getElementById('dash-workshop');
+    if (wkshpEl) {
+      const workshopRows = Inventory.getAllSerialRows().filter(r => r.condition && r.condition !== 'used');
+      const wkMap = { 'needs-testing': 0, faulty: 0, rma: 0, 'fail-tl': 0 };
+      workshopRows.forEach(r => { if (wkMap[r.condition] !== undefined) wkMap[r.condition]++; });
+      const wkTotal = workshopRows.length;
+      const wkValue = workshopRows.reduce((a, r) => a + (r.cost || 0), 0);
+      const fmtV = n => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }) : '—';
+      if (wkTotal === 0) {
+        wkshpEl.innerHTML = '<div class="empty" style="padding:.75rem">No items in workshop</div>';
+      } else {
+        wkshpEl.innerHTML = `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div class="dash-wk-card dash-wk-total">
+              <div class="dash-wk-count">${wkTotal}</div>
+              <div class="dash-wk-label">Total</div>
+              <div class="dash-wk-value">${fmtV(wkValue)}</div>
+            </div>
+            ${wkMap['needs-testing'] > 0 ? `<div class="dash-wk-card dash-wk-testing">
+              <div class="dash-wk-count">${wkMap['needs-testing']}</div>
+              <div class="dash-wk-label">🔬 Needs Testing</div>
+            </div>` : ''}
+            ${wkMap['faulty'] > 0 ? `<div class="dash-wk-card dash-wk-faulty">
+              <div class="dash-wk-count">${wkMap['faulty']}</div>
+              <div class="dash-wk-label">⚠ Faulty</div>
+            </div>` : ''}
+            ${wkMap['rma'] > 0 ? `<div class="dash-wk-card dash-wk-rma">
+              <div class="dash-wk-count">${wkMap['rma']}</div>
+              <div class="dash-wk-label">⛔ RMA</div>
+            </div>` : ''}
+            ${wkMap['fail-tl'] > 0 ? `<div class="dash-wk-card dash-wk-tl">
+              <div class="dash-wk-count">${wkMap['fail-tl']}</div>
+              <div class="dash-wk-label">🗑 Total Loss</div>
+            </div>` : ''}
+          </div>`;
+      }
+    }
 
     const map = Inventory.getInventoryMap();
     const locMap = {};
