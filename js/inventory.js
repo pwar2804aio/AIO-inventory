@@ -144,10 +144,15 @@ const Inventory = (() => {
       [...v.inStock].sort().forEach(serial => {
         const inMv = serialInMovement[serial.toUpperCase()];
         // used = permanent flag (set at receipt, never cleared)
-        // condition = current servicing state (faulty, needs-testing, rma, or empty)
         const used = inMv?.used === true || inMv?.condition === 'used';
-        // condition is the active servicing flag — 'used' alone doesn't show in servicing
-        const condition = inMv?.condition === 'used' ? '' : (inMv?.condition || '');
+        // Per-serial condition overrides movement-level condition (prevents batch bleed)
+        const scEntry = DB.getSerialCondition(serial);
+        const condition = scEntry !== null
+          ? scEntry.condition                                              // per-serial override
+          : (inMv?.condition === 'used' ? '' : (inMv?.condition || '')); // movement fallback
+        const testedBy  = scEntry !== null ? (scEntry.testedBy  || '') : (inMv?.testedBy  || '');
+        const testedAt  = scEntry !== null ? (scEntry.testedAt  || '') : (inMv?.testedAt  || '');
+        const testNotes = scEntry !== null ? (scEntry.testNotes || '') : (inMv?.testNotes || '');
         rows.push({
           serial,
           product:   v.product,
@@ -156,9 +161,9 @@ const Inventory = (() => {
           status:    'in-stock',
           used,
           condition,
-          testedBy:  inMv?.testedBy  || '',
-          testedAt:  inMv?.testedAt  || '',
-          testNotes: inMv?.testNotes || '',
+          testedBy,
+          testedAt,
+          testNotes,
           poNumber:  inMv?.poNumber  || DB.getSerialPO(serial) || '',
           cost:      DB.getSerialCost(serial),
         });
