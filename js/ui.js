@@ -1031,9 +1031,103 @@ const UI = (() => {
     const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
     const canEdit = typeof Auth !== 'undefined' && Auth.canEdit();
 
-    // Only show needs-testing, faulty, rma — NOT used
-    const rows = Inventory.getAllSerialRows().filter(r => {
-      if (!r.condition) return false; // only faulty, needs-testing, rma show in servicing
+    // All workshop items (any condition except 'used')
+    const allWorkshopRows = Inventory.getAllSerialRows().filter(r => r.condition && r.condition !== 'used');
+
+    // ── Stats & breakdown panels ───────────────────────────────────────
+    const fmt$ = n => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }) : '—';
+    const CONDITIONS = [
+      { key: 'needs-testing', label: '🔬 Needs Testing', cls: 'svc-stat-testing' },
+      { key: 'faulty',        label: '⚠ Faulty',        cls: 'svc-stat-faulty'  },
+      { key: 'rma',           label: '⛔ RMA',           cls: 'svc-stat-rma'    },
+      { key: 'fail-tl',       label: '🗑 Total Loss',    cls: 'svc-stat-tl'     },
+    ];
+    const condTotals = {};
+    CONDITIONS.forEach(c => { condTotals[c.key] = { count: 0, value: 0 }; });
+    allWorkshopRows.forEach(r => {
+      if (condTotals[r.condition]) {
+        condTotals[r.condition].count++;
+        if (r.cost != null) condTotals[r.condition].value += r.cost;
+      }
+    });
+    const totalCount = allWorkshopRows.length;
+    const totalValue = allWorkshopRows.reduce((a, r) => a + (r.cost || 0), 0);
+
+    const statsPanel = document.getElementById('svc-stats-panel');
+    if (statsPanel) {
+      statsPanel.innerHTML = `
+        <div class="panel-title" style="margin-bottom:10px;">Workshop summary</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div class="svc-stat-card svc-stat-total">
+            <div class="svc-stat-count">${totalCount}</div>
+            <div class="svc-stat-label">Total in workshop</div>
+            <div class="svc-stat-value">${fmt$(totalValue)}</div>
+          </div>
+          ${CONDITIONS.map(c => `
+          <div class="svc-stat-card ${c.cls}">
+            <div class="svc-stat-count">${condTotals[c.key].count}</div>
+            <div class="svc-stat-label">${c.label}</div>
+            <div class="svc-stat-value">${fmt$(condTotals[c.key].value)}</div>
+          </div>`).join('')}
+        </div>`;
+    }
+
+    // ── Per-product breakdown ──────────────────────────────────────────
+    const prodMap = {};
+    allWorkshopRows.forEach(r => {
+      if (!prodMap[r.product]) prodMap[r.product] = { product: r.product, category: r.category, 'needs-testing': 0, faulty: 0, rma: 0, 'fail-tl': 0, total: 0, value: 0 };
+      if (prodMap[r.product][r.condition] !== undefined) prodMap[r.product][r.condition]++;
+      prodMap[r.product].total++;
+      if (r.cost != null) prodMap[r.product].value += r.cost;
+    });
+    const prodRows = Object.values(prodMap).sort((a, b) => b.total - a.total);
+    const breakdownPanel = document.getElementById('svc-breakdown-panel');
+    const breakdownTable = document.getElementById('svc-breakdown-table');
+    if (breakdownPanel && breakdownTable) {
+      if (prodRows.length) {
+        breakdownPanel.style.display = '';
+        breakdownTable.innerHTML = `<table class="product-stock-table">
+          <thead><tr>
+            <th style="width:28%">Product</th>
+            <th style="width:14%">Category</th>
+            <th style="width:12%">🔬 Testing</th>
+            <th style="width:10%">⚠ Faulty</th>
+            <th style="width:10%">⛔ RMA</th>
+            <th style="width:10%">🗑 TL</th>
+            <th style="width:8%">Total</th>
+            <th style="width:8%">Value</th>
+          </tr></thead>
+          <tbody>
+            ${prodRows.map(p => `<tr>
+              <td style="font-weight:500">${esc(p.product)}</td>
+              <td><span class="cat-badge">${esc(p.category||'—')}</span></td>
+              <td>${p['needs-testing'] > 0 ? `<span class="cond-inline cond-inline-testing">${p['needs-testing']}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${p.faulty    > 0 ? `<span class="cond-inline cond-inline-faulty">${p.faulty}</span>`         : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${p.rma       > 0 ? `<span class="cond-inline cond-inline-rma">${p.rma}</span>`               : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${p['fail-tl']> 0 ? `<span class="cond-inline cond-inline-tl">${p['fail-tl']}</span>`        : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td style="font-weight:600">${p.total}</td>
+              <td style="font-weight:600;color:var(--aio-purple)">${fmt$(p.value)}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--aio-purple-light);">
+              <td colspan="2" style="font-weight:700;font-size:12px;color:var(--text-muted);padding-top:8px;">Total</td>
+              <td style="padding-top:8px;font-weight:700">${condTotals['needs-testing'].count||'—'}</td>
+              <td style="padding-top:8px;font-weight:700">${condTotals['faulty'].count||'—'}</td>
+              <td style="padding-top:8px;font-weight:700">${condTotals['rma'].count||'—'}</td>
+              <td style="padding-top:8px;font-weight:700">${condTotals['fail-tl'].count||'—'}</td>
+              <td style="padding-top:8px;font-weight:700">${totalCount}</td>
+              <td style="padding-top:8px;font-weight:700;color:var(--aio-purple)">${fmt$(totalValue)}</td>
+            </tr>
+          </tfoot>
+        </table>`;
+      } else {
+        breakdownPanel.style.display = 'none';
+      }
+    }
+
+    // ── Serial table (filtered) ────────────────────────────────────────
+    const rows = allWorkshopRows.filter(r => {
       const mf = !flagF  || r.condition === flagF;
       const ms = !search || r.serial.toLowerCase().includes(search)
                          || r.product.toLowerCase().includes(search)
@@ -1046,7 +1140,7 @@ const UI = (() => {
     if (!tbody) return;
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No items in servicing</div></td></tr>';
+      tbody.innerHTML = `<tr><td colspan="10"><div class="empty">${flagF || search ? 'No matching items' : 'No items in servicing'}</div></td></tr>`;
       if (footer) footer.textContent = '';
       return;
     }
@@ -1057,6 +1151,7 @@ const UI = (() => {
       <td><span class="cat-badge">${esc(r.category||'—')}</span></td>
       <td><span class="loc-badge">${esc(r.location||'—')}</span></td>
       <td><span class="badge b-condition b-cond-${r.condition}">${_conditionLabel(r.condition)}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '$'+r.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
       <td style="font-size:12px;color:var(--text-muted)">${r.testedBy ? esc(r.testedBy) : '<span style="color:var(--text-hint)">—</span>'}</td>
       <td style="font-size:11px;color:var(--text-hint)">${r.testedAt ? fmtDate(r.testedAt) : '—'}</td>
       <td style="font-size:11px;color:var(--text-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.testNotes)}">${r.testNotes ? esc(r.testNotes) : '<span style="color:var(--text-hint)">—</span>'}</td>
@@ -1070,7 +1165,7 @@ const UI = (() => {
       </td>
     </tr>`).join('');
 
-    if (footer) footer.textContent = `${rows.length} item${rows.length!==1?'s':''} in servicing`;
+    if (footer) footer.textContent = `${rows.length} item${rows.length!==1?'s':''} shown · ${totalCount} total in workshop · Value: ${fmt$(totalValue)}`;
 
     // Wire test outcome buttons
     tbody.querySelectorAll('.svc-test-btn').forEach(btn => {
