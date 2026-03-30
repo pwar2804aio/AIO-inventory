@@ -207,7 +207,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v56</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v57</span>
     </nav>
   </header>
 
@@ -241,70 +241,96 @@
   <!-- STOCK AUDIT / STOCKTAKE -->
   <section id="v-stocktake" class="view" style="display:none;">
     <div class="panel-toolbar">
-      <span class="toolbar-title">Stock Audit</span>
-      <span class="hint" style="margin-top:0;">Count or scan serials to verify what's physically in stock</span>
+      <span class="toolbar-title">Stock Count</span>
+      <span class="hint" style="margin-top:0;">Build a count list, count your stock, get a variance report</span>
     </div>
 
-    <!-- Setup panel -->
-    <div class="panel" id="audit-setup-panel" style="margin-bottom:1rem;">
-      <div class="panel-title">Audit setup</div>
-      <div class="search-bar" style="flex-wrap:wrap;gap:8px;">
-        <select class="fi" id="audit-loc-filter" style="width:200px;">
-          <option value="">All locations</option>
-        </select>
-        <select class="fi" id="audit-cat-filter" style="width:200px;">
-          <option value="">All categories</option>
-        </select>
-        <select class="fi" id="audit-product-filter" style="width:220px;">
-          <option value="">All products</option>
-        </select>
-        <button class="btn btn-primary" id="btn-start-audit">▶ Start Audit</button>
+    <!-- PHASE 1: Build count list (setup) -->
+    <div id="audit-setup-panel">
+      <!-- Add products to count -->
+      <div class="panel" style="margin-bottom:1rem;">
+        <div class="panel-title" style="margin-bottom:12px;">Build your count list</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">LOCATION</label>
+            <select class="fi" id="audit-loc-filter" style="width:200px;">
+              <option value="">All locations</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">PRODUCT</label>
+            <select class="fi" id="audit-product-picker" style="width:260px;">
+              <option value="">Select product to add...</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="btn-add-to-count">＋ Add to count</button>
+          <button class="btn btn-ghost btn-sm" id="btn-add-all-products" style="margin-left:4px;">Add all in location</button>
+        </div>
+      </div>
+
+      <!-- Count list -->
+      <div class="panel" style="margin-bottom:1rem;" id="audit-count-list-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="panel-title" style="margin:0;">Count list <span id="audit-count-list-badge" style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:6px;"></span></div>
+          <button class="btn btn-orange btn-sm" id="btn-start-count" style="display:none;">▶ Start Count</button>
+        </div>
+        <div id="audit-count-list-body">
+          <div class="empty" style="padding:.75rem 0">No products added yet — select a product above and click Add</div>
+        </div>
+      </div>
+
+      <!-- Past audits -->
+      <div class="panel" id="audit-history-panel">
+        <div class="panel-title">Count history</div>
+        <div id="audit-history-body"></div>
       </div>
     </div>
 
-    <!-- Audit history -->
-    <div class="panel" id="audit-history-panel" style="margin-bottom:1rem;">
-      <div class="panel-title">Audit history</div>
-      <div id="audit-history-body"></div>
-    </div>
-
-    <!-- Active audit panel (hidden until started) -->
+    <!-- PHASE 2: Counting (hidden until started) -->
     <div id="audit-active-panel" style="display:none;">
-      <!-- Progress -->
+      <!-- Header bar -->
       <div class="panel" style="margin-bottom:1rem;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div class="panel-title" style="margin:0;" id="audit-progress-title">Audit in progress</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div class="panel-title" style="margin:0;" id="audit-progress-title">Count in progress</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:3px;" id="audit-scope-label"></div>
+          </div>
           <div style="display:flex;gap:8px;">
             <button class="btn btn-ghost btn-sm" id="btn-audit-camera">📷 Scan</button>
-            <button class="btn btn-orange btn-sm" id="btn-finish-audit">Finish Audit</button>
+            <button class="btn btn-orange btn-sm" id="btn-finish-audit">Complete Count</button>
             <button class="btn btn-ghost btn-sm" id="btn-cancel-audit">✕ Cancel</button>
           </div>
         </div>
-        <div class="audit-progress-bar-wrap">
-          <div class="audit-progress-bar-fill" id="audit-progress-fill" style="width:0%"></div>
-        </div>
-        <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
-          <span class="audit-stat"><span class="audit-stat-num audit-col-match" id="audit-count-matched">0</span> serials scanned</span>
-          <span class="audit-stat"><span class="audit-stat-num audit-col-missing" id="audit-count-missing">0</span> serials not yet scanned</span>
-          <span class="audit-stat"><span class="audit-stat-num audit-col-unexpected" id="audit-count-unexpected">0</span> unexpected</span>
-          <span class="audit-stat" style="margin-left:auto;color:var(--text-muted);font-size:12px;" id="audit-scope-label"></span>
-        </div>
-        <!-- Serial input -->
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <input class="fi" id="audit-serial-input" placeholder="Type or scan serial number..." style="flex:1;font-family:var(--mono);" autocomplete="off" />
+        <!-- Global scan input -->
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <input class="fi" id="audit-serial-input" placeholder="Scan or type a serial number — auto-assigns to correct product..." style="flex:1;font-family:var(--mono);" autocomplete="off" />
           <button class="btn btn-primary" id="btn-audit-submit">Add ↵</button>
         </div>
-        <div id="audit-scan-feedback" style="min-height:24px;margin-top:6px;font-size:13px;font-weight:500;"></div>
+        <div id="audit-scan-feedback" style="min-height:22px;margin-top:6px;font-size:13px;font-weight:500;"></div>
       </div>
 
-      <!-- Results table -->
-      <div class="panel" id="audit-results-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div class="panel-title" style="margin:0;">Results</div>
-          <button class="btn btn-ghost btn-sm" id="btn-audit-export" style="display:none;">Export CSV</button>
-        </div>
-        <div id="audit-results-body"></div>
+      <!-- Per-product counting panels -->
+      <div id="audit-product-panels"></div>
+
+      <!-- Export (shown after complete) -->
+      <div style="margin-top:8px;display:none;" id="audit-export-row">
+        <button class="btn btn-ghost btn-sm" id="btn-audit-export">Export CSV</button>
       </div>
+    </div>
+
+    <!-- PHASE 3: Variance report (hidden until completed) -->
+    <div id="audit-report-panel" style="display:none;">
+      <div class="panel" style="margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="panel-title" style="margin:0;">Variance Report</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" id="btn-audit-export-report">Export CSV</button>
+            <button class="btn btn-ghost btn-sm" id="btn-new-count">↩ New count</button>
+          </div>
+        </div>
+        <div id="audit-report-summary"></div>
+      </div>
+      <div id="audit-report-products"></div>
     </div>
   </section>
 
@@ -962,14 +988,14 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=56"></script>
-<script src="js/auth-ui.js?v=56"></script>
-<script src="js/scanner.js?v=56"></script>
-<script src="js/db.js?v=56"></script>
-<script src="js/inventory.js?v=56"></script>
-<script src="js/reports.js?v=56"></script>
-<script src="js/ui.js?v=56"></script>
-<script src="js/audit.js?v=56"></script>
-<script src="js/app.js?v=56"></script>
+<script src="js/auth.js?v=57"></script>
+<script src="js/auth-ui.js?v=57"></script>
+<script src="js/scanner.js?v=57"></script>
+<script src="js/db.js?v=57"></script>
+<script src="js/inventory.js?v=57"></script>
+<script src="js/reports.js?v=57"></script>
+<script src="js/ui.js?v=57"></script>
+<script src="js/audit.js?v=57"></script>
+<script src="js/app.js?v=57"></script>
 </body>
 </html>
