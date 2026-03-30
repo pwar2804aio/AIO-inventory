@@ -69,7 +69,8 @@ function refreshProducts() {
       if (idx > -1) merged[idx] = { ...merged[idx], category: r.category || merged[idx].category, supplier: r.supplier };
     }
   });
-  PRODUCTS = merged;
+  PRODUCTS.length = 0;
+  PRODUCTS.push(...merged);
 }
 
 const Inventory = (() => {
