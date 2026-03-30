@@ -590,6 +590,90 @@ const UI = (() => {
   }
 
   // ── Stock Deployed ────────────────────────────────────────────────────
+  // ── Stock Breakdown (by product, with condition columns) ─────────────
+  let _invProductFilter = ''; // product name filter set by clicking a breakdown row
+
+  function renderStockBreakdown() {
+    const tbody   = document.getElementById('inv-breakdown-body');
+    const footer  = document.getElementById('inv-breakdown-footer');
+    if (!tbody) return;
+
+    const allInStock = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
+    const byProduct  = {};
+    allInStock.forEach(r => {
+      if (!byProduct[r.product]) byProduct[r.product] = { product: r.product, category: r.category, total: 0, working: 0, testing: 0, faulty: 0, rma: 0, tl: 0 };
+      byProduct[r.product].total++;
+      const c = r.condition || '';
+      if (!c)                    byProduct[r.product].working++;
+      else if (c === 'needs-testing') byProduct[r.product].testing++;
+      else if (c === 'faulty')   byProduct[r.product].faulty++;
+      else if (c === 'rma')      byProduct[r.product].rma++;
+      else if (c === 'fail-tl')  byProduct[r.product].tl++;
+    });
+
+    const rows = Object.values(byProduct).sort((a, b) => a.product.localeCompare(b.product));
+
+    function cell(n, cls) {
+      return n > 0
+        ? `<td class="bd-nonzero ${cls}">${n}</td>`
+        : `<td class="bd-zero">—</td>`;
+    }
+
+    tbody.innerHTML = rows.map(p => `
+      <tr data-product="${esc(p.product)}" class="${_invProductFilter === p.product ? 'bd-row-active' : ''}">
+        <td style="font-weight:500">${esc(p.product)}</td>
+        <td><span class="cat-badge">${esc(p.category||'—')}</span></td>
+        <td class="bd-total">${p.total}</td>
+        <td class="bd-working">${p.working}</td>
+        ${cell(p.testing, 'bd-testing')}
+        ${cell(p.faulty,  'bd-faulty')}
+        ${cell(p.rma,     'bd-rma')}
+        ${cell(p.tl,      'bd-tl')}
+        <td><button class="bd-filter-btn" data-product="${esc(p.product)}" title="Filter serials below">▼</button></td>
+      </tr>`).join('');
+
+    // Totals row
+    const tot = rows.reduce((a,p) => ({ total: a.total+p.total, working: a.working+p.working, testing: a.testing+p.testing, faulty: a.faulty+p.faulty, rma: a.rma+p.rma, tl: a.tl+p.tl }), { total:0, working:0, testing:0, faulty:0, rma:0, tl:0 });
+    const tfoot = tbody.querySelector('tfoot') || (() => { const tf = document.createElement('tfoot'); tbody.parentNode.appendChild(tf); return tf; })();
+    tfoot.innerHTML = `<tr class="bd-tfoot">
+      <td colspan="2" style="padding:9px 12px;">Total</td>
+      <td class="bd-total">${tot.total}</td>
+      <td class="bd-working">${tot.working}</td>
+      ${cell(tot.testing,'bd-testing')}${cell(tot.faulty,'bd-faulty')}${cell(tot.rma,'bd-rma')}${cell(tot.tl,'bd-tl')}
+      <td></td>
+    </tr>`;
+
+    if (footer) footer.textContent = `${rows.length} product line${rows.length!==1?'s':''} · ${tot.total} units in stock · ${tot.working} working`;
+
+    // Row click → filter serial table
+    tbody.querySelectorAll('tr[data-product]').forEach(tr => {
+      tr.addEventListener('click', e => {
+        if (e.target.classList.contains('bd-filter-btn')) return; // let button handle
+        _invProductFilter = _invProductFilter === tr.dataset.product ? '' : tr.dataset.product;
+        renderStockBreakdown();
+        renderStockList();
+      });
+    });
+    tbody.querySelectorAll('.bd-filter-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        _invProductFilter = _invProductFilter === btn.dataset.product ? '' : btn.dataset.product;
+        renderStockBreakdown();
+        renderStockList();
+      });
+    });
+
+    // Show/hide clear button
+    const clearBtn = document.getElementById('btn-clear-product-filter');
+    if (clearBtn) {
+      clearBtn.style.display = _invProductFilter ? '' : 'none';
+      clearBtn.onclick = () => { _invProductFilter = ''; renderStockBreakdown(); renderStockList(); };
+    }
+    // Update serial panel title
+    const titleEl = document.getElementById('inv-serial-title');
+    if (titleEl) titleEl.textContent = _invProductFilter ? `Serials — ${_invProductFilter}` : 'All serials';
+  }
+
   function renderStockList() {
     const search  = (document.getElementById('inv-search').value || '').toLowerCase();
     const catF    = document.getElementById('inv-cat-filter').value;
@@ -601,6 +685,7 @@ const UI = (() => {
       const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
       const mc = !catF   || r.category === catF;
       const ml = !locF   || r.location === locF;
+      const mp = !_invProductFilter || r.product === _invProductFilter;
       // Status filter handles both stock status and condition/used flags
       let mst = true;
       if (statusF) {
@@ -614,7 +699,7 @@ const UI = (() => {
           mst = r.status === statusF;
         }
       }
-      return ms && mc && ml && mst;
+      return ms && mc && ml && mst && mp;
     });
 
     const totalCost   = rows.filter(r => r.cost != null).reduce((a, r) => a + r.cost, 0);
@@ -726,34 +811,7 @@ const UI = (() => {
       ? `${rows.length} serial${rows.length!==1?'s':''} shown${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${costedCount} priced)` : ' · Click any cost cell to add/edit price'}`
       : '';
 
-    // ── Condition summary bar ─────────────────────────────────────────────
-    const allInStock = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
-    const cntWorking = allInStock.filter(r => !r.condition).length;
-    const cntRMA     = allInStock.filter(r => r.condition === 'rma').length;
-    const cntTL      = allInStock.filter(r => r.condition === 'fail-tl').length;
-    const summaryEl  = document.getElementById('inv-condition-summary');
-    if (summaryEl) {
-      summaryEl.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <span style="font-size:11px;color:var(--text-muted);font-weight:500;margin-right:2px;">In stock breakdown:</span>
-          <button class="stock-cond-pill pill-working${statusF==='working'?' pill-active':''}" data-filter="working">
-            ✅ Working <span class="pill-count">${cntWorking}</span>
-          </button>
-          <button class="stock-cond-pill pill-rma${statusF==='cond-rma'?' pill-active':''}" data-filter="cond-rma">
-            ⛔ RMA <span class="pill-count">${cntRMA}</span>
-          </button>
-          <button class="stock-cond-pill pill-tl${statusF==='cond-fail-tl'?' pill-active':''}" data-filter="cond-fail-tl">
-            🗑 Total Loss <span class="pill-count">${cntTL}</span>
-          </button>
-          ${statusF ? `<button class="stock-cond-pill pill-clear" data-filter="">✕ Clear filter</button>` : ''}
-        </div>`;
-      summaryEl.querySelectorAll('.stock-cond-pill[data-filter]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.getElementById('inv-status-filter').value = btn.dataset.filter;
-          renderStockList();
-        });
-      });
-    }
+
   }
 
   // ── Populate category dropdowns from CATEGORIES constant ─────────────
@@ -1566,5 +1624,5 @@ const UI = (() => {
     });
   }
 
-    return { showAlert, hideAlert, renderDashboard, renderProductList, renderSupplierList, renderOrderList, renderTransitList, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
+    return { showAlert, hideAlert, renderDashboard, renderProductList, renderSupplierList, renderOrderList, renderTransitList, renderStockBreakdown, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
