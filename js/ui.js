@@ -580,7 +580,9 @@ const UI = (() => {
       // Status filter handles both stock status and condition/used flags
       let mst = true;
       if (statusF) {
-        if (statusF === 'cond-used') {
+        if (statusF === 'working') {
+          mst = r.status === 'in-stock' && !r.condition;
+        } else if (statusF === 'cond-used') {
           mst = r.used === true;
         } else if (statusF.startsWith('cond-')) {
           mst = r.condition === statusF.replace('cond-', '');
@@ -699,6 +701,35 @@ const UI = (() => {
     footer.textContent = rows.length
       ? `${rows.length} serial${rows.length!==1?'s':''} shown${costedCount > 0 ? ` · Total cost: $${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${costedCount} priced)` : ' · Click any cost cell to add/edit price'}`
       : '';
+
+    // ── Condition summary bar ─────────────────────────────────────────────
+    const allInStock = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
+    const cntWorking = allInStock.filter(r => !r.condition).length;
+    const cntRMA     = allInStock.filter(r => r.condition === 'rma').length;
+    const cntTL      = allInStock.filter(r => r.condition === 'fail-tl').length;
+    const summaryEl  = document.getElementById('inv-condition-summary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:11px;color:var(--text-muted);font-weight:500;margin-right:2px;">In stock breakdown:</span>
+          <button class="stock-cond-pill pill-working${statusF==='working'?' pill-active':''}" data-filter="working">
+            ✅ Working <span class="pill-count">${cntWorking}</span>
+          </button>
+          <button class="stock-cond-pill pill-rma${statusF==='cond-rma'?' pill-active':''}" data-filter="cond-rma">
+            ⛔ RMA <span class="pill-count">${cntRMA}</span>
+          </button>
+          <button class="stock-cond-pill pill-tl${statusF==='cond-fail-tl'?' pill-active':''}" data-filter="cond-fail-tl">
+            🗑 Total Loss <span class="pill-count">${cntTL}</span>
+          </button>
+          ${statusF ? `<button class="stock-cond-pill pill-clear" data-filter="">✕ Clear filter</button>` : ''}
+        </div>`;
+      summaryEl.querySelectorAll('.stock-cond-pill[data-filter]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('inv-status-filter').value = btn.dataset.filter;
+          renderStockList();
+        });
+      });
+    }
   }
 
   // ── Populate category dropdowns from CATEGORIES constant ─────────────
