@@ -1003,7 +1003,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','products','suppliers','orders','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','reports','lookup','history'];
+  const VIEWS = ['dashboard','products','suppliers','orders','transit','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','stocktake','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -1027,6 +1027,7 @@
     if (view === 'totalloss')  UI.renderTotalLoss();
     if (view === 'rmatldisp')  UI.renderRmaTlDispatched();
     if (view === 'reports')    Reports.render();
+    if (view === 'stocktake')  Audit.init();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); }
