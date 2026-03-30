@@ -1,233 +1,351 @@
-// audit.js — Stock Audit / Variance Report v55+
-// Serial items: scan one by one. No-serial items: enter physical count per product group.
-// Deployed / in-transit = not on site, entirely excluded.
+// audit.js — Stock Count v57
+// 3-phase: Build count list → Count → Variance report
+// Serialised products: scan serials. NS products: enter physical qty.
+// Deployed / in-transit: not on site, entirely excluded.
 
 const Audit = (() => {
 
-  let _state = null;
+  // ── State ─────────────────────────────────────────────────────────────
+  // Phase 1: count list items: [{ product, category, location, isNS, systemCount, systemSerials[] }]
+  // Phase 2: per-product scanned: { [product||loc]: { matched:Set, unexpected:[] } }
+  // Phase 2: per-product NS count: { [product||loc]: number|null }
+  let _countList  = [];   // items user has added to count
+  let _scanned    = {};   // phase 2 scan results
+  let _nsCounts   = {};   // phase 2 NS physical counts
+  let _lostSet    = new Set();
+  let _phase      = 1;    // 1=setup, 2=counting, 3=report
+  let _report     = null;
 
-  function _esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  const fmt$ = n => n > 0
-    ? '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-  const fmtDate = iso => iso
-    ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+  function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  const fmt$ = n => n > 0 ? '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+  const _key = item => item.product + '||' + (item.location || '');
 
   // ── init ──────────────────────────────────────────────────────────────
   function init() {
-    _populateFilters();
+    if (_phase === 2) return; // don't reset if counting
+    if (_phase === 3) return;
+    _phase = 1;
+    _populateLocFilter();
+    _populateProductPicker();
+    _renderCountList();
     _renderHistory();
-    const startBtn = document.getElementById('btn-start-audit');
-    if (startBtn && !startBtn._auditWired) {
-      startBtn._auditWired = true;
-      startBtn.addEventListener('click', start);
+    _wireSetupButtons();
+  }
+
+  function _populateLocFilter() {
+    const sel = document.getElementById('audit-loc-filter');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All locations</option>' +
+      Inventory.getLocations().map(l => `<option value="${_esc(l)}"${l===cur?' selected':''}>${_esc(l)}</option>`).join('');
+    if (!sel._locWired) {
+      sel._locWired = true;
+      sel.addEventListener('change', () => _populateProductPicker());
     }
   }
 
-  function _populateFilters() {
+  function _populateProductPicker() {
+    const sel  = document.getElementById('audit-product-picker');
+    const locF = document.getElementById('audit-loc-filter')?.value || '';
+    if (!sel) return;
     const inStock = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
-    const locSel  = document.getElementById('audit-loc-filter');
-    if (locSel) {
-      const cur = locSel.value;
-      locSel.innerHTML = '<option value="">All locations</option>' +
-        Inventory.getLocations().map(l => `<option value="${_esc(l)}"${l===cur?' selected':''}>${_esc(l)}</option>`).join('');
+    // Build product+location combos
+    const combos = {};
+    inStock.forEach(r => {
+      if (locF && r.location !== locF) return;
+      const k = r.product + '||' + (r.location||'');
+      if (!combos[k]) combos[k] = { product: r.product, location: r.location||'', category: r.category, ns: 0, serial: 0 };
+      if (r.serial.startsWith('NS-')) combos[k].ns++;
+      else combos[k].serial++;
+    });
+    // Exclude already-added
+    const alreadyAdded = new Set(_countList.map(i => _key(i)));
+    sel.innerHTML = '<option value="">Select product to add...</option>' +
+      Object.values(combos)
+        .filter(c => !alreadyAdded.has(c.product + '||' + c.location))
+        .sort((a,b) => a.product.localeCompare(b.product))
+        .map(c => {
+          const type = c.ns > 0 && c.serial === 0 ? '📦 NS' : c.serial > 0 && c.ns === 0 ? '🔢' : '🔢+📦';
+          const qty  = c.ns > 0 && c.serial === 0 ? c.ns : c.serial + (c.ns > 0 ? `+${c.ns}NS` : '');
+          return `<option value="${_esc(c.product + '||' + c.location)}">${_esc(c.product)}${c.location?' @ '+c.location:''} · ${type} · ${qty}</option>`;
+        }).join('');
+  }
+
+  function _wireSetupButtons() {
+    const addBtn = document.getElementById('btn-add-to-count');
+    if (addBtn && !addBtn._wired) {
+      addBtn._wired = true;
+      addBtn.addEventListener('click', _addProduct);
     }
-    const catSel = document.getElementById('audit-cat-filter');
-    if (catSel) {
-      const cur = catSel.value;
-      catSel.innerHTML = '<option value="">All categories</option>' +
-        Inventory.CATEGORIES.map(c => `<option value="${_esc(c)}"${c===cur?' selected':''}>${_esc(c)}</option>`).join('');
+    const addAllBtn = document.getElementById('btn-add-all-products');
+    if (addAllBtn && !addAllBtn._wired) {
+      addAllBtn._wired = true;
+      addAllBtn.addEventListener('click', _addAllProducts);
     }
-    const prodSel = document.getElementById('audit-product-filter');
-    if (prodSel) {
-      const products = [...new Set(inStock.map(r => r.product))].sort();
-      const cur = prodSel.value;
-      prodSel.innerHTML = '<option value="">All products</option>' +
-        products.map(p => `<option value="${_esc(p)}"${p===cur?' selected':''}>${_esc(p)}</option>`).join('');
+    const startBtn = document.getElementById('btn-start-count');
+    if (startBtn && !startBtn._wired) {
+      startBtn._wired = true;
+      startBtn.addEventListener('click', _startCounting);
     }
   }
 
-  // ── audit history ─────────────────────────────────────────────────────
+  function _addProduct() {
+    const sel = document.getElementById('audit-product-picker');
+    if (!sel?.value) return;
+    const [product, location] = sel.value.split('||');
+    _addToCountList(product, location || '');
+  }
+
+  function _addAllProducts() {
+    const locF    = document.getElementById('audit-loc-filter')?.value || '';
+    const inStock = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
+    const combos  = {};
+    inStock.forEach(r => {
+      if (locF && r.location !== locF) return;
+      const k = r.product + '||' + (r.location||'');
+      if (!combos[k]) combos[k] = { product: r.product, location: r.location||'' };
+    });
+    const alreadyAdded = new Set(_countList.map(i => _key(i)));
+    Object.values(combos).forEach(c => {
+      if (!alreadyAdded.has(c.product + '||' + c.location))
+        _addToCountList(c.product, c.location, false);
+    });
+    _renderCountList();
+    _populateProductPicker();
+  }
+
+  function _addToCountList(product, location, doRender = true) {
+    const inStock = Inventory.getAllSerialRows().filter(r =>
+      r.status === 'in-stock' && r.product === product &&
+      (!location || r.location === location)
+    );
+    if (!inStock.length) return;
+    const isNS     = inStock.every(r => r.serial.startsWith('NS-'));
+    const category = inStock[0].category;
+    const serials  = inStock.filter(r => !r.serial.startsWith('NS-')).map(r => r.serial);
+    const nsCount  = inStock.filter(r => r.serial.startsWith('NS-')).length;
+
+    _countList.push({ product, location, category, isNS: nsCount > 0 && serials.length === 0,
+      hasBoth: nsCount > 0 && serials.length > 0,
+      systemSerials: serials, systemNsCount: nsCount, systemCount: inStock.length });
+
+    if (doRender) { _renderCountList(); _populateProductPicker(); }
+  }
+
+  function _renderCountList() {
+    const body    = document.getElementById('audit-count-list-body');
+    const badge   = document.getElementById('audit-count-list-badge');
+    const startBtn = document.getElementById('btn-start-count');
+    if (!body) return;
+
+    if (badge) badge.textContent = _countList.length ? `(${_countList.length} products)` : '';
+    if (startBtn) startBtn.style.display = _countList.length ? '' : 'none';
+
+    if (!_countList.length) {
+      body.innerHTML = '<div class="empty" style="padding:.75rem 0">No products added yet — select a product above and click Add</div>';
+      return;
+    }
+
+    body.innerHTML = `<table class="product-stock-table">
+      <thead><tr>
+        <th style="width:30%">Product</th>
+        <th style="width:15%">Category</th>
+        <th style="width:18%">Location</th>
+        <th style="width:12%">Type</th>
+        <th style="width:10%">System qty</th>
+        <th style="width:15%"></th>
+      </tr></thead>
+      <tbody>
+        ${_countList.map((item, idx) => {
+          const type = item.isNS ? '<span class="cat-badge">📦 No-serial</span>'
+                     : item.hasBoth ? '<span class="cat-badge">🔢+📦 Mixed</span>'
+                     : '<span class="cat-badge">🔢 Serialised</span>';
+          return `<tr>
+            <td style="font-weight:500">${_esc(item.product)}</td>
+            <td><span class="cat-badge">${_esc(item.category||'—')}</span></td>
+            <td>${item.location?`<span class="loc-badge">${_esc(item.location)}</span>`:'<span style="color:var(--text-hint)">All</span>'}</td>
+            <td>${type}</td>
+            <td style="font-weight:600;color:var(--success-text)">${item.systemCount}</td>
+            <td style="text-align:right"><button class="btn btn-ghost btn-xs audit-remove-item" data-idx="${idx}" style="color:#9c2a00;">✕ Remove</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+    body.querySelectorAll('.audit-remove-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _countList.splice(parseInt(btn.dataset.idx), 1);
+        _renderCountList();
+        _populateProductPicker();
+      });
+    });
+  }
+
   function _renderHistory() {
     const el = document.getElementById('audit-history-body');
     if (!el) return;
     const records = DB.getAuditRecords().slice().reverse();
-    if (!records.length) {
-      el.innerHTML = '<div class="empty" style="padding:.75rem 0">No audits recorded yet</div>';
-      return;
-    }
+    if (!records.length) { el.innerHTML = '<div class="empty" style="padding:.75rem 0">No counts recorded yet</div>'; return; }
     el.innerHTML = `<table class="product-stock-table">
       <thead><tr>
-        <th style="width:16%">Date</th><th style="width:20%">Scope</th>
-        <th style="width:9%">Expected</th><th style="width:9%">Matched</th>
-        <th style="width:9%">Missing</th><th style="width:9%">Lost</th>
-        <th style="width:9%">Unexpected</th><th style="width:9%">NS variance</th>
-        <th style="width:10%">Value at risk</th>
+        <th style="width:15%">Date</th><th style="width:20%">Scope</th>
+        <th style="width:9%">Products</th><th style="width:9%">Expected</th>
+        <th style="width:9%">Matched</th><th style="width:9%">Missing</th>
+        <th style="width:9%">Lost</th><th style="width:9%">NS var.</th>
+        <th style="width:11%">Value at risk</th>
       </tr></thead>
-      <tbody>${records.map(r => `<tr>
+      <tbody>${records.map(r=>`<tr>
         <td style="color:var(--text-muted);font-size:12px">${fmtDate(r.date)}</td>
-        <td style="font-weight:500;font-size:12px">${_esc(r.scope)}</td>
-        <td>${r.expected}</td>
+        <td style="font-size:12px">${_esc(r.scope)}</td>
+        <td>${r.productCount||'—'}</td><td>${r.expected}</td>
         <td style="color:#1a7a3c;font-weight:600">${r.matched}</td>
         <td style="color:${r.missing>0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.missing}</td>
         <td style="color:${(r.lost||0)>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${r.lost||0}</td>
-        <td style="color:${r.unexpected>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${r.unexpected}</td>
         <td style="color:${(r.nsVariance||0)!==0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.nsVariance!=null?(r.nsVariance>0?'+':'')+r.nsVariance:'—'}</td>
         <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(r.missingValue||0)}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
 
-  // ── start ─────────────────────────────────────────────────────────────
-  function start() {
-    const locF  = document.getElementById('audit-loc-filter')?.value  || '';
-    const catF  = document.getElementById('audit-cat-filter')?.value  || '';
-    const prodF = document.getElementById('audit-product-filter')?.value || '';
+  // ── Phase 2: Start counting ───────────────────────────────────────────
+  function _startCounting() {
+    if (!_countList.length) return;
+    _phase   = 2;
+    _scanned = {};
+    _nsCounts = {};
+    _lostSet  = new Set();
 
-    const inStock = Inventory.getAllSerialRows().filter(r => {
-      if (r.status !== 'in-stock') return false;
-      if (locF  && r.location !== locF)  return false;
-      if (catF  && r.category !== catF)  return false;
-      if (prodF && r.product  !== prodF) return false;
-      return true;
+    // Init scan state per item
+    _countList.forEach(item => {
+      _scanned[_key(item)] = { matched: new Set(), unexpected: [] };
     });
 
-    // Split: serialised (real serials) vs no-serial (NS- prefix)
-    const serialRows   = inStock.filter(r => !r.serial.startsWith('NS-'));
-    const nsRows       = inStock.filter(r =>  r.serial.startsWith('NS-'));
-
-    // Build expected maps
-    const expectedMap = {};
-    serialRows.forEach(r => { expectedMap[r.serial.toUpperCase()] = r; });
-
-    // Group NS items by product+location for quantity counting
-    const nsGroups = {};
-    nsRows.forEach(r => {
-      const k = r.product + '||' + (r.location || '');
-      if (!nsGroups[k]) nsGroups[k] = { product: r.product, location: r.location, category: r.category, systemCount: 0, cost: 0, serials: [] };
-      nsGroups[k].systemCount++;
-      if (r.cost != null) nsGroups[k].cost += r.cost;
-      nsGroups[k].serials.push(r.serial);
+    // Build a serial→item lookup for smart assignment
+    _serialLookup = {};
+    _countList.forEach(item => {
+      item.systemSerials.forEach(s => { _serialLookup[s.toUpperCase()] = item; });
     });
-
-    const parts = [];
-    if (prodF) parts.push(prodF); else if (catF) parts.push(catF); else parts.push('All products');
-    if (locF) parts.push(`@ ${locF}`);
-    const scopeLabel = parts.join(' ');
-
-    _state = {
-      expectedMap,   // serial items
-      nsGroups,      // no-serial groups
-      nsCounts: {},  // user-entered counts keyed by product||location
-      scanned: {},
-      lostSet: new Set(),
-      scopeLabel, locF, catF, prodF,
-      finished: false, _report: null,
-    };
 
     document.getElementById('audit-setup-panel').style.display  = 'none';
     document.getElementById('audit-active-panel').style.display  = '';
-    document.getElementById('audit-scope-label').textContent     = scopeLabel;
-    document.getElementById('audit-progress-title').textContent  = `Auditing: ${scopeLabel}`;
-    _updateCounts();
+    document.getElementById('audit-report-panel').style.display  = 'none';
 
-    // Render NS count panel + serial scan panel
-    _renderActivePanel();
+    const scopeLabel = _countList.length === 1
+      ? _countList[0].product + (_countList[0].location ? ' @ ' + _countList[0].location : '')
+      : `${_countList.length} products`;
+    document.getElementById('audit-scope-label').textContent   = scopeLabel;
+    document.getElementById('audit-progress-title').textContent = 'Count in progress';
 
-    // Wire serial input
-    const input  = document.getElementById('audit-serial-input');
+    _renderProductPanels();
+
+    const input = document.getElementById('audit-serial-input');
     const submit = document.getElementById('btn-audit-submit');
-    input.disabled = false; submit.disabled = false; input.value = '';
-    if (!input._auditWired) {
-      input._auditWired = true;
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submit(); } });
-      submit.addEventListener('click', _submit);
+    if (input) { input.disabled = false; input.value = ''; }
+    if (!input._wired) {
+      input._wired = true;
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } });
+      submit.addEventListener('click', _submitSerial);
     }
 
     const finBtn = document.getElementById('btn-finish-audit');
-    finBtn.textContent = 'Finish Audit'; finBtn.disabled = false;
-    if (!finBtn._auditWired) { finBtn._auditWired = true; finBtn.addEventListener('click', finish); }
+    if (finBtn) { finBtn.textContent = 'Complete Count'; finBtn.disabled = false; }
+    if (finBtn && !finBtn._wired) { finBtn._wired = true; finBtn.addEventListener('click', _completeCount); }
+
     const cancelBtn = document.getElementById('btn-cancel-audit');
-    if (!cancelBtn._auditWired) { cancelBtn._auditWired = true; cancelBtn.addEventListener('click', cancel); }
-    const exportBtn = document.getElementById('btn-audit-export');
-    exportBtn.style.display = 'none';
-    if (!exportBtn._auditWired) { exportBtn._auditWired = true; exportBtn.addEventListener('click', _exportCSV); }
+    if (cancelBtn && !cancelBtn._wired) { cancelBtn._wired = true; cancelBtn.addEventListener('click', _cancel); }
+
     const camBtn = document.getElementById('btn-audit-camera');
-    if (camBtn && !camBtn._auditWired) {
-      camBtn._auditWired = true;
+    if (camBtn && !camBtn._wired) {
+      camBtn._wired = true;
       camBtn.addEventListener('click', () => {
-        if (typeof Scanner !== 'undefined') Scanner.start(s => { input.value = s; _submit(); });
+        if (typeof Scanner !== 'undefined') Scanner.start(s => { input.value = s; _submitSerial(); });
       });
     }
-    input.focus();
+
+    if (input) input.focus();
   }
 
-  // ── render active panel (NS table + serial scan) ──────────────────────
-  function _renderActivePanel() {
-    const resultsEl = document.getElementById('audit-results-body');
-    const nsKeys    = Object.keys(_state.nsGroups);
+  let _serialLookup = {};
 
-    let nsHtml = '';
-    if (nsKeys.length > 0) {
-      nsHtml = `
-        <div style="margin-bottom:16px;padding:12px 16px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:10px;">
-          <div class="panel-title" style="margin-bottom:10px;">📦 No-serial items — enter physical count</div>
-          <table class="product-stock-table">
-            <thead><tr>
-              <th style="width:30%">Product</th>
-              <th style="width:16%">Category</th>
-              <th style="width:16%">Location</th>
-              <th style="width:12%">System count</th>
-              <th style="width:14%">Physical count</th>
-              <th style="width:12%">Variance</th>
-            </tr></thead>
-            <tbody id="audit-ns-body">
-              ${nsKeys.map(k => {
-                const g = _state.nsGroups[k];
-                return `<tr id="audit-ns-row-${_esc(k.replace(/[^a-z0-9]/gi,'_'))}">
-                  <td style="font-weight:500">${_esc(g.product)}</td>
-                  <td><span class="cat-badge">${_esc(g.category||'—')}</span></td>
-                  <td>${g.location?`<span class="loc-badge">${_esc(g.location)}</span>`:'—'}</td>
-                  <td style="font-weight:600;color:var(--success-text)">${g.systemCount}</td>
-                  <td><input type="number" min="0" class="fi audit-ns-input" style="width:70px;padding:4px 8px;font-size:13px;"
-                    data-nskey="${_esc(k)}" placeholder="0" /></td>
-                  <td class="audit-ns-variance" id="audit-ns-var-${_esc(k.replace(/[^a-z0-9]/gi,'_'))}">—</td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>`;
-    }
+  function _renderProductPanels() {
+    const container = document.getElementById('audit-product-panels');
+    if (!container) return;
 
-    resultsEl.innerHTML = nsHtml +
-      '<div class="empty" style="padding:1rem">No serials scanned yet — start scanning above</div>';
+    container.innerHTML = _countList.map((item, idx) => {
+      const k        = _key(item);
+      const typeLabel = item.isNS ? '📦 No-serial (enter qty)'
+                      : item.hasBoth ? '🔢+📦 Mixed'
+                      : '🔢 Scan serials';
+      return `<div class="panel audit-product-panel" style="margin-bottom:1rem;" id="audit-panel-${idx}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <span style="font-weight:600;font-size:14px">${_esc(item.product)}</span>
+            ${item.location?`<span class="loc-badge" style="margin-left:8px;">${_esc(item.location)}</span>`:''}
+            <span class="cat-badge" style="margin-left:6px;">${_esc(item.category||'—')}</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${typeLabel}</span>
+          </div>
+          <div class="audit-panel-status" id="audit-panel-status-${idx}" style="font-size:12px;font-weight:600;color:var(--text-muted);">
+            System: ${item.systemCount}
+          </div>
+        </div>
+        ${item.isNS ? `
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="font-size:13px;color:var(--text-muted);">System count: <strong>${item.systemNsCount}</strong></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:13px;font-weight:500;">Physical count:</label>
+              <input type="number" min="0" class="fi audit-ns-qty" style="width:80px;padding:4px 8px;font-size:14px;font-weight:600;"
+                data-key="${_esc(k)}" data-system="${item.systemNsCount}" placeholder="0" />
+            </div>
+            <div class="audit-ns-variance-display" id="audit-ns-var-${idx}" style="font-size:14px;font-weight:700;"></div>
+          </div>
+        ` : item.hasBoth ? `
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+            <div style="flex:1;min-width:200px;">
+              <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">SERIALISED (${item.systemSerials.length})</div>
+              <div class="audit-panel-scanned" id="audit-scanned-${idx}" style="font-size:12px;color:var(--text-muted);">None scanned yet</div>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">NO-SERIAL COUNT (system: ${item.systemNsCount})</div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="number" min="0" class="fi audit-ns-qty" style="width:80px;padding:4px 8px;"
+                  data-key="${_esc(k)}" data-system="${item.systemNsCount}" placeholder="0" />
+                <div class="audit-ns-variance-display" id="audit-ns-var-${idx}"></div>
+              </div>
+            </div>
+          </div>
+        ` : `
+          <div class="audit-panel-scanned" id="audit-scanned-${idx}" style="font-size:12px;color:var(--text-muted);">
+            None scanned yet — use the scan input above
+          </div>
+        `}
+      </div>`;
+    }).join('');
 
-    // Wire NS inputs
-    resultsEl.querySelectorAll('.audit-ns-input').forEach(inp => {
-      inp.addEventListener('input', () => _updateNsVariance(inp.dataset.nskey, inp.value));
+    // Wire NS qty inputs
+    container.querySelectorAll('.audit-ns-qty').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const k      = inp.dataset.key;
+        const system = parseInt(inp.dataset.system, 10);
+        const phys   = inp.value === '' ? null : parseInt(inp.value, 10);
+        _nsCounts[k] = phys;
+        // Find the panel idx
+        const panelIdx = _countList.findIndex(i => _key(i) === k);
+        const varEl = document.getElementById(`audit-ns-var-${panelIdx}`);
+        if (varEl) {
+          if (phys === null || isNaN(phys)) { varEl.textContent = ''; return; }
+          const diff = phys - system;
+          varEl.textContent = (diff > 0 ? '+' : '') + diff;
+          varEl.style.color = diff === 0 ? '#1a7a3c' : diff > 0 ? '#1a5080' : '#9c6000';
+        }
+        _updatePanelStatus(panelIdx);
+      });
     });
   }
 
-  function _updateNsVariance(key, val) {
-    const g    = _state.nsGroups[key];
-    if (!g) return;
-    const phys = val === '' ? null : parseInt(val, 10);
-    _state.nsCounts[key] = phys;
-
-    const varId  = 'audit-ns-var-' + key.replace(/[^a-z0-9]/gi,'_');
-    const varEl  = document.getElementById(varId);
-    if (!varEl) return;
-    if (phys === null || isNaN(phys)) { varEl.textContent = '—'; varEl.style.color = ''; return; }
-    const diff = phys - g.systemCount;
-    varEl.textContent = (diff > 0 ? '+' : '') + diff;
-    varEl.style.color = diff === 0 ? '#1a7a3c' : diff > 0 ? '#1a5080' : '#9c6000';
-    varEl.style.fontWeight = diff !== 0 ? '700' : '400';
-  }
-
-  // ── submit serial ─────────────────────────────────────────────────────
-  function _submit() {
-    if (!_state || _state.finished) return;
+  // ── submit a serial (auto-assigns to correct product) ─────────────────
+  function _submitSerial() {
+    if (_phase !== 2) return;
     const input    = document.getElementById('audit-serial-input');
     const raw      = (input?.value || '').trim();
     if (!raw) return;
@@ -237,353 +355,369 @@ const Audit = (() => {
 
     if (raw.toUpperCase().startsWith('NS-')) {
       feedback.style.color = '#9c6000';
-      feedback.textContent = `⚠ ${raw} — no-serial item, use the count table above`;
+      feedback.textContent = `⚠ No-serial item — enter the physical count in the panel below`;
       setTimeout(() => { feedback.textContent = ''; }, 3000);
       return;
     }
 
-    if (_state.scanned[key]) {
+    // Check if already scanned in any panel
+    const alreadyIn = Object.values(_scanned).find(s => s.matched.has(key) || s.unexpected.find(u => u.toUpperCase() === key));
+    if (alreadyIn) {
       feedback.style.color = 'var(--text-muted)';
       feedback.textContent = `⚠ ${raw} already scanned`;
-      setTimeout(() => { if (feedback.textContent.includes(raw)) feedback.textContent = ''; }, 2000);
+      setTimeout(() => { feedback.textContent = ''; }, 2000);
       return;
     }
 
-    if (_state.expectedMap[key]) {
-      _state.scanned[key] = { serial: raw, category: 'matched' };
+    const item = _serialLookup[key];
+    if (item) {
+      const k = _key(item);
+      _scanned[k].matched.add(key);
+      const idx = _countList.indexOf(item);
       feedback.style.color = '#1a7a3c';
-      feedback.textContent = `✅ ${raw} — ${_state.expectedMap[key].product}`;
+      feedback.textContent = `✅ ${raw} — ${item.product}`;
+      _updateSerialPanel(idx, item);
+      _updatePanelStatus(idx);
     } else {
-      _state.scanned[key] = { serial: raw, category: 'unexpected' };
-      feedback.style.color = '#9c2a00';
-      feedback.textContent = `❓ ${raw} — not found in stock`;
+      // Unexpected — doesn't match any product in count list
+      // Try to find which product panel it might belong to (best-effort: check all in-stock)
+      const allRow = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key && r.status === 'in-stock');
+      if (allRow) {
+        feedback.style.color = '#9c6000';
+        feedback.textContent = `⚠ ${raw} — ${allRow.product} is in stock but not in your count list`;
+      } else {
+        // Truly unknown — assign to first serialised product as unexpected
+        const firstSerial = _countList.find(i => !i.isNS);
+        if (firstSerial) {
+          _scanned[_key(firstSerial)].unexpected.push(raw);
+          const idx = _countList.indexOf(firstSerial);
+          _updateSerialPanel(idx, firstSerial);
+        }
+        feedback.style.color = '#9c2a00';
+        feedback.textContent = `❓ ${raw} — not found in system`;
+      }
     }
 
-    _updateCounts();
-    _renderSerialTable();
-    input.focus();
+    if (input) input.focus();
   }
 
-  function _updateCounts() {
-    if (!_state) return;
-    const scanned    = Object.values(_state.scanned);
-    const matched    = scanned.filter(s => s.category === 'matched').length;
-    const unexpected = scanned.filter(s => s.category === 'unexpected').length;
-    const total      = Object.keys(_state.expectedMap).length;
-    const pct        = total > 0 ? Math.round(matched / total * 100) : 0;
-    document.getElementById('audit-count-matched').textContent   = matched;
-    document.getElementById('audit-count-missing').textContent   = total - matched;
-    document.getElementById('audit-count-unexpected').textContent = unexpected;
-    document.getElementById('audit-progress-fill').style.width   = pct + '%';
+  function _updateSerialPanel(idx, item) {
+    const el = document.getElementById(`audit-scanned-${idx}`);
+    if (!el) return;
+    const k          = _key(item);
+    const st         = _scanned[k];
+    const matchCount = st.matched.size;
+    const unexpCount = st.unexpected.length;
+    const missingCount = item.systemSerials.length - matchCount;
+
+    el.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="color:#1a7a3c;font-weight:600">✅ ${matchCount} scanned</span>
+        <span style="color:${missingCount>0?'#9c6000':'var(--text-muted)'};font-weight:600">⚠ ${missingCount} not yet scanned</span>
+        ${unexpCount>0?`<span style="color:#9c2a00;font-weight:600">❓ ${unexpCount} unexpected</span>`:''}
+      </div>`;
   }
 
-  function _renderSerialTable() {
-    // Replace the "No serials scanned" placeholder but keep NS table
-    const resultsEl = document.getElementById('audit-results-body');
-    // Find existing NS panel or empty div
-    const nsPanel = resultsEl.querySelector('div[style*="No-serial"]') ||
-                    resultsEl.firstElementChild;
+  function _updatePanelStatus(idx) {
+    const item = _countList[idx];
+    const el   = document.getElementById(`audit-panel-status-${idx}`);
+    if (!el || !item) return;
+    const k  = _key(item);
+    const st = _scanned[k];
 
-    const rows = Object.values(_state.scanned).reverse();
-    const tableHtml = `<div class="table-wrap" id="audit-serial-table"><table>
-      <thead><tr>
-        <th style="width:20%">Serial</th><th style="width:32%">Product</th>
-        <th style="width:16%">Category</th><th style="width:16%">Location</th><th style="width:16%">Result</th>
-      </tr></thead>
-      <tbody>${rows.map(s => {
-        const info = _state.expectedMap[s.serial.toUpperCase()] || {};
-        const rc   = s.category === 'matched' ? 'audit-row-match' : 'audit-row-unexpected';
-        const badge = s.category === 'matched'
-          ? '<span class="audit-badge audit-badge-match">✅ In stock</span>'
-          : '<span class="audit-badge audit-badge-unexpected">❓ Not in system</span>';
-        return `<tr class="${rc}">
-          <td style="font-family:var(--mono);font-size:11px">${_esc(s.serial)}</td>
-          <td style="font-weight:500">${_esc(info.product||'—')}</td>
-          <td>${info.category?`<span class="cat-badge">${_esc(info.category)}</span>`:'—'}</td>
-          <td>${info.location?`<span class="loc-badge">${_esc(info.location)}</span>`:'—'}</td>
-          <td>${badge}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
-
-    // Replace or append serial table
-    const existing = document.getElementById('audit-serial-table');
-    const emptyDiv = resultsEl.querySelector('.empty');
-    if (existing) {
-      existing.outerHTML = tableHtml;
-    } else if (emptyDiv) {
-      emptyDiv.outerHTML = tableHtml;
+    if (item.isNS) {
+      const phys = _nsCounts[k];
+      if (phys == null) { el.textContent = `System: ${item.systemCount}`; el.style.color = 'var(--text-muted)'; return; }
+      const diff = phys - item.systemNsCount;
+      el.textContent = `System: ${item.systemNsCount} · Counted: ${phys} · ${diff>=0?(diff===0?'✅ Match':'↑ +'+diff):'↓ '+diff}`;
+      el.style.color = diff === 0 ? '#1a7a3c' : '#9c6000';
     } else {
-      resultsEl.insertAdjacentHTML('beforeend', tableHtml);
+      const matched  = st.matched.size;
+      const total    = item.systemSerials.length;
+      const missing  = total - matched;
+      const unexp    = st.unexpected.length;
+      el.textContent = `${matched}/${total} scanned${missing>0?' · ⚠ '+missing+' missing':''}${unexp>0?' · ❓ '+unexp+' unexpected':''}`;
+      el.style.color = matched === total && unexp === 0 ? '#1a7a3c' : '#9c6000';
     }
   }
 
-  // ── finish: variance report + save ────────────────────────────────────
-  function finish() {
-    if (!_state) return;
-    _state.finished = true;
-    document.getElementById('audit-serial-input').disabled  = true;
-    document.getElementById('btn-audit-submit').disabled    = true;
-    document.getElementById('btn-finish-audit').textContent = '✓ Done';
-    document.getElementById('btn-finish-audit').disabled    = true;
-    document.getElementById('btn-audit-export').style.display = '';
-    document.getElementById('audit-scan-feedback').textContent = '';
-    document.getElementById('audit-progress-title').textContent = 'Variance Report';
+  // ── Phase 3: Complete count ───────────────────────────────────────────
+  function _completeCount() {
+    if (_phase !== 2) return;
+    _phase = 3;
 
-    // Also lock NS inputs
-    document.querySelectorAll('.audit-ns-input').forEach(inp => inp.disabled = true);
+    document.getElementById('audit-serial-input').disabled = true;
+    document.getElementById('btn-audit-submit').disabled   = true;
+    document.getElementById('btn-finish-audit').disabled   = true;
+    document.querySelectorAll('.audit-ns-qty').forEach(i => i.disabled = true);
 
-    const scannedKeys = new Set(Object.keys(_state.scanned));
-    const missingRows = Object.entries(_state.expectedMap)
-      .filter(([k]) => !scannedKeys.has(k))
-      .map(([, r]) => ({ serial: r.serial, category: 'missing', info: r }));
-    const matchedRows = Object.values(_state.scanned)
-      .filter(s => s.category === 'matched')
-      .map(s => ({ serial: s.serial, category: 'matched', info: _state.expectedMap[s.serial.toUpperCase()] || {} }));
-    const unexpectedRows = Object.values(_state.scanned)
-      .filter(s => s.category === 'unexpected')
-      .map(s => ({ serial: s.serial, category: 'unexpected', info: {} }));
+    // Build report
+    let totalExpected = 0, totalMatched = 0, totalMissing = 0, totalUnexpected = 0, totalNsVariance = 0, nsGroupsEntered = 0;
+    let missingValue  = 0;
+    const allMissingSerials = [], allUnexpectedSerials = [];
 
-    // NS variance summary
-    const nsVariance = Object.entries(_state.nsCounts).reduce((total, [k, phys]) => {
-      if (phys === null || isNaN(phys)) return total;
-      return total + (phys - (_state.nsGroups[k]?.systemCount || 0));
-    }, 0);
-    const nsEntered = Object.keys(_state.nsCounts).filter(k => _state.nsCounts[k] !== null).length;
+    const productReports = _countList.map(item => {
+      const k   = _key(item);
+      const st  = _scanned[k];
+      const unitCost = item.systemCount > 0
+        ? Inventory.getAllSerialRows().filter(r => r.product === item.product && r.status === 'in-stock' && r.cost != null).reduce((a,r)=>a+r.cost,0) / Math.max(1, item.systemCount)
+        : 0;
 
-    _state._report = [...missingRows, ...unexpectedRows, ...matchedRows];
-
-    const total        = Object.keys(_state.expectedMap).length;
-    const matchPct     = total > 0 ? Math.round(matchedRows.length / total * 100) : 100;
-    const missingValue = missingRows.reduce((a, r) => a + (r.info.cost || 0), 0);
-
-    DB.addAuditRecord({
-      id: Date.now(), date: new Date().toISOString(), scope: _state.scopeLabel,
-      locF: _state.locF, catF: _state.catF, prodF: _state.prodF,
-      expected: total, matched: matchedRows.length,
-      missing: missingRows.length, unexpected: unexpectedRows.length,
-      lost: 0, missingValue,
-      nsVariance: nsEntered > 0 ? nsVariance : null,
-      missingSerials: missingRows.map(r => r.serial),
-      unexpectedSerials: unexpectedRows.map(r => r.serial),
+      if (item.isNS) {
+        const phys     = _nsCounts[k];
+        const diff     = (phys != null && !isNaN(phys)) ? phys - item.systemNsCount : null;
+        if (diff !== null) { totalNsVariance += diff; nsGroupsEntered++; }
+        const short    = diff !== null && diff < 0 ? Math.abs(diff) * unitCost : 0;
+        totalExpected += item.systemNsCount;
+        if (diff !== null && diff < 0) { totalMissing += Math.abs(diff); missingValue += short; }
+        return { item, type:'ns', phys, diff, short };
+      } else {
+        const missing  = item.systemSerials.filter(s => !st.matched.has(s.toUpperCase()));
+        const matched  = [...st.matched];
+        const unexp    = st.unexpected;
+        const mVal     = missing.length * unitCost;
+        totalExpected += item.systemSerials.length;
+        totalMatched  += matched.length;
+        totalMissing  += missing.length;
+        totalUnexpected += unexp.length;
+        missingValue   += mVal;
+        missing.forEach(s => allMissingSerials.push({ serial:s, item }));
+        unexp.forEach(s => allUnexpectedSerials.push({ serial:s, item }));
+        if (item.hasBoth) {
+          const phys = _nsCounts[k];
+          const diff = (phys != null && !isNaN(phys)) ? phys - item.systemNsCount : null;
+          if (diff !== null) { totalNsVariance += diff; nsGroupsEntered++; }
+          return { item, type:'mixed', matched, missing, unexp, mVal, phys, nsDiff: diff };
+        }
+        return { item, type:'serial', matched, missing, unexp, mVal };
+      }
     });
 
-    _renderReport(missingRows, matchedRows, unexpectedRows, total, matchPct, missingValue, nsVariance, nsEntered);
+    _report = { productReports, totalExpected, totalMatched, totalMissing, totalUnexpected,
+                totalNsVariance, nsGroupsEntered, missingValue, allMissingSerials, allUnexpectedSerials };
+
+    // Save to DB
+    DB.addAuditRecord({
+      id: Date.now(), date: new Date().toISOString(),
+      scope: _countList.map(i => i.product + (i.location?' @ '+i.location:'')).join(', '),
+      productCount: _countList.length,
+      locF: '', catF: '', prodF: '',
+      expected: totalExpected, matched: totalMatched, missing: totalMissing,
+      unexpected: totalUnexpected, lost: 0, missingValue,
+      nsVariance: nsGroupsEntered > 0 ? totalNsVariance : null,
+      missingSerials: allMissingSerials.map(r=>r.serial),
+      unexpectedSerials: allUnexpectedSerials.map(r=>r.serial),
+    });
+
+    _renderReport();
+
+    document.getElementById('audit-active-panel').style.display = 'none';
+    document.getElementById('audit-report-panel').style.display = '';
+    _wireReportButtons();
   }
 
-  function _renderReport(missingRows, matchedRows, unexpectedRows, total, matchPct, missingValue, nsVariance, nsEntered) {
-    // NS variance summary cards
-    const nsGroupKeys = Object.keys(_state.nsGroups);
-    let nsReportHtml = '';
-    if (nsGroupKeys.length > 0) {
-      const nsRows = nsGroupKeys.map(k => {
-        const g    = _state.nsGroups[k];
-        const phys = _state.nsCounts[k];
-        const diff = (phys != null && !isNaN(phys)) ? phys - g.systemCount : null;
-        const rc   = diff === null ? '' : diff === 0 ? 'audit-row-match' : 'audit-row-missing';
-        const badge = diff === null
-          ? '<span class="audit-badge audit-badge-missing">⚠ Not counted</span>'
-          : diff === 0
-            ? '<span class="audit-badge audit-badge-match">✅ Correct</span>'
-            : `<span class="audit-badge audit-badge-missing">${diff>0?'↑ Over':'↓ Short'} ${Math.abs(diff)}</span>`;
-        const unitCost = g.systemCount > 0 ? g.cost / g.systemCount : 0;
-        const lossVal  = diff !== null && diff < 0 ? fmt$(Math.abs(diff) * unitCost) : '—';
-        return `<tr class="${rc}">
-          <td style="font-weight:500">${_esc(g.product)}</td>
-          <td>${g.category?`<span class="cat-badge">${_esc(g.category)}</span>`:'—'}</td>
-          <td>${g.location?`<span class="loc-badge">${_esc(g.location)}</span>`:'—'}</td>
-          <td style="font-weight:600">${g.systemCount}</td>
-          <td style="font-weight:600;color:${diff===null?'var(--text-hint)':diff===0?'#1a7a3c':diff>0?'#1a5080':'#9c6000'}">${phys != null && !isNaN(phys) ? phys : '—'}</td>
-          <td style="font-weight:700;color:${diff===null?'var(--text-hint)':diff===0?'#1a7a3c':diff>0?'#1a5080':'#9c2a00'}">${diff===null?'—':(diff>0?'+':'')+diff}</td>
-          <td style="font-size:12px">${lossVal}</td>
-          <td>${badge}</td>
-        </tr>`;
-      }).join('');
+  function _renderReport() {
+    const { productReports, totalExpected, totalMatched, totalMissing, totalUnexpected,
+            totalNsVariance, nsGroupsEntered, missingValue } = _report;
 
-      nsReportHtml = `
-        <div style="margin-bottom:16px;">
-          <div class="panel-title" style="margin-bottom:8px;">📦 No-serial items variance</div>
-          <div class="table-wrap"><table class="product-stock-table">
-            <thead><tr>
-              <th style="width:22%">Product</th><th style="width:13%">Category</th>
-              <th style="width:13%">Location</th><th style="width:9%">System</th>
-              <th style="width:9%">Counted</th><th style="width:8%">Variance</th>
-              <th style="width:12%">Value short</th><th style="width:14%">Result</th>
-            </tr></thead>
-            <tbody>${nsRows}</tbody>
-          </table></div>
-        </div>`;
-    }
-
-    const summaryHtml = `
+    // Summary cards
+    document.getElementById('audit-report-summary').innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
         <div class="svc-stat-card" style="background:#eaf7ee;border-color:#b8e0c4;color:#1a6b38;flex:1;min-width:110px;">
-          <div class="svc-stat-count">${matchedRows.length}<span style="font-size:13px;font-weight:400;margin-left:4px;">/ ${total}</span></div>
+          <div class="svc-stat-count">${totalMatched}<span style="font-size:14px;font-weight:400;margin-left:4px;">/ ${totalExpected}</span></div>
           <div class="svc-stat-label">✅ Serials matched</div>
-          <div class="svc-stat-value">${matchPct}% found</div>
+          <div class="svc-stat-value">${totalExpected>0?Math.round(totalMatched/totalExpected*100):100}% found</div>
         </div>
         <div class="svc-stat-card" style="background:#fffbf0;border-color:#f0d860;color:#9c6000;flex:1;min-width:110px;">
-          <div class="svc-stat-count">${missingRows.length}</div>
+          <div class="svc-stat-count">${totalMissing}</div>
           <div class="svc-stat-label">⚠ Serials missing</div>
           <div class="svc-stat-value">${fmt$(missingValue)}</div>
         </div>
         <div class="svc-stat-card" style="background:#fef0ea;border-color:#f5c6b0;color:#9c2a00;flex:1;min-width:110px;">
-          <div class="svc-stat-count">${unexpectedRows.length}</div>
-          <div class="svc-stat-label">❓ Unexpected</div>
+          <div class="svc-stat-count">${totalUnexpected}</div>
+          <div class="svc-stat-label">❓ Unexpected serials</div>
           <div class="svc-stat-value">Not in system</div>
         </div>
-        ${nsGroupKeys.length > 0 ? `<div class="svc-stat-card" style="background:${nsVariance===0?'#eaf7ee':Math.abs(nsVariance||0)>0?'#fffbf0':'#f5f5f5'};border-color:${nsVariance===0?'#b8e0c4':'#f0d860'};color:${nsVariance===0?'#1a6b38':'#9c6000'};flex:1;min-width:110px;">
-          <div class="svc-stat-count">${nsEntered > 0 ? (nsVariance > 0 ? '+' : '') + nsVariance : '—'}</div>
-          <div class="svc-stat-label">📦 NS variance</div>
-          <div class="svc-stat-value">${nsEntered}/${nsGroupKeys.length} groups counted</div>
+        ${nsGroupsEntered > 0 ? `<div class="svc-stat-card" style="background:${totalNsVariance===0?'#eaf7ee':'#fffbf0'};border-color:${totalNsVariance===0?'#b8e0c4':'#f0d860'};color:${totalNsVariance===0?'#1a6b38':'#9c6000'};flex:1;min-width:110px;">
+          <div class="svc-stat-count">${totalNsVariance>0?'+':''}${totalNsVariance}</div>
+          <div class="svc-stat-label">📦 NS total variance</div>
+          <div class="svc-stat-value">${nsGroupsEntered} group${nsGroupsEntered!==1?'s':''} counted</div>
         </div>` : ''}
       </div>
-      ${missingRows.length > 0 ? `<div style="margin-bottom:12px;padding:10px 14px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;font-size:13px;color:#7a5000;">
-        <strong>⚠ ${missingRows.length} missing serial${missingRows.length!==1?'s':''}</strong> — use <strong>Write off</strong> to permanently remove items that cannot be located.
+      ${totalMissing > 0 ? `<div style="margin-bottom:12px;padding:10px 14px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;font-size:13px;color:#7a5000;">
+        <strong>⚠ ${totalMissing} missing serial${totalMissing!==1?'s':''}</strong> detected — use <strong>Write off</strong> on items below to permanently remove them from inventory and record as lost stock.
       </div>` : ''}`;
 
-    const tableRows = _state._report.map(r => {
-      const rc    = r.category === 'matched' ? 'audit-row-match' : r.category === 'missing' ? 'audit-row-missing' : 'audit-row-unexpected';
-      const badge = r.category === 'matched'    ? '<span class="audit-badge audit-badge-match">✅ Matched</span>'
-                  : r.category === 'missing'    ? '<span class="audit-badge audit-badge-missing">⚠ Missing</span>'
-                  : '<span class="audit-badge audit-badge-unexpected">❓ Unexpected</span>';
-      const cost  = r.info.cost != null ? '$' + r.info.cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-      const lostBtn = r.category === 'missing'
-        ? `<button class="btn btn-ghost btn-xs audit-mark-lost" data-serial="${_esc(r.serial)}" style="color:#9c2a00;border-color:#f5c6b0;white-space:nowrap;">Write off</button>` : '';
-      return `<tr class="${rc}" id="audit-row-${r.serial.replace(/[^a-z0-9]/gi,'_')}">
-        <td>${badge}</td>
-        <td style="font-family:var(--mono);font-size:11px;font-weight:500">${_esc(r.serial)}</td>
-        <td style="font-weight:500">${_esc(r.info.product||'—')}</td>
-        <td>${r.info.category?`<span class="cat-badge">${_esc(r.info.category)}</span>`:'—'}</td>
-        <td>${r.info.location?`<span class="loc-badge">${_esc(r.info.location)}</span>`:'—'}</td>
-        <td style="font-size:12px">${cost}</td>
-        <td>${lostBtn}</td>
-      </tr>`;
+    // Per-product report panels
+    const reportsHtml = productReports.map((pr, idx) => {
+      const item = pr.item;
+      if (pr.type === 'ns') {
+        const diffStr = pr.diff === null ? 'Not counted' : pr.diff === 0 ? '✅ Correct' : (pr.diff > 0 ? `↑ Over by ${pr.diff}` : `↓ Short by ${Math.abs(pr.diff)}`);
+        const rc = pr.diff === null ? '' : pr.diff === 0 ? 'audit-row-match' : 'audit-row-missing';
+        return `<div class="panel" style="margin-bottom:1rem;">
+          <div style="font-weight:600;font-size:14px;margin-bottom:8px;">${_esc(item.product)}${item.location?` <span class="loc-badge">${_esc(item.location)}</span>`:''}</div>
+          <table class="product-stock-table"><thead><tr>
+            <th>System</th><th>Counted</th><th>Variance</th><th>Value short</th><th>Result</th>
+          </tr></thead><tbody><tr class="${rc}">
+            <td style="font-weight:600">${item.systemNsCount}</td>
+            <td style="font-weight:600">${pr.phys != null ? pr.phys : '—'}</td>
+            <td style="font-weight:700;color:${pr.diff===null?'var(--text-hint)':pr.diff===0?'#1a7a3c':pr.diff>0?'#1a5080':'#9c2a00'}">${pr.diff!=null?(pr.diff>0?'+':'')+pr.diff:'—'}</td>
+            <td style="font-size:12px">${pr.short>0?fmt$(pr.short):'—'}</td>
+            <td><span class="audit-badge ${pr.diff===null?'audit-badge-missing':pr.diff===0?'audit-badge-match':'audit-badge-missing'}">${diffStr}</span></td>
+          </tr></tbody></table>
+        </div>`;
+      }
+
+      // Serialised or mixed
+      const allRows = [
+        ...pr.missing.map(s => ({ serial:s, cat:'missing' })),
+        ...(pr.unexp||[]).map(s => ({ serial:s, cat:'unexpected' })),
+        ...pr.matched.map(s => ({ serial:s, cat:'matched' })),
+      ];
+
+      const tableRows = allRows.map(r => {
+        const rc    = r.cat==='matched'?'audit-row-match':r.cat==='missing'?'audit-row-missing':'audit-row-unexpected';
+        const badge = r.cat==='matched'    ? '<span class="audit-badge audit-badge-match">✅ Matched</span>'
+                    : r.cat==='missing'    ? '<span class="audit-badge audit-badge-missing">⚠ Missing</span>'
+                    : '<span class="audit-badge audit-badge-unexpected">❓ Unexpected</span>';
+        const lostBtn = r.cat==='missing'
+          ? `<button class="btn btn-ghost btn-xs audit-mark-lost" data-serial="${_esc(r.serial)}" style="color:#9c2a00;border-color:#f5c6b0;white-space:nowrap;">Write off</button>` : '';
+        const rowId = `audit-row-${r.serial.replace(/[^a-z0-9]/gi,'_')}`;
+        const info  = Inventory.getAllSerialRows().find(row => row.serial.toUpperCase() === r.serial.toUpperCase()) || {};
+        return `<tr class="${rc}" id="${rowId}">
+          <td>${badge}</td>
+          <td style="font-family:var(--mono);font-size:11px;font-weight:500">${_esc(r.serial)}</td>
+          <td>${lostBtn}</td>
+        </tr>`;
+      }).join('');
+
+      const nsSection = (pr.type === 'mixed' && item.systemNsCount > 0) ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">NO-SERIAL ITEMS</div>
+          <div style="display:flex;gap:16px;font-size:13px;">
+            <span>System: <strong>${item.systemNsCount}</strong></span>
+            <span>Counted: <strong>${pr.phys!=null?pr.phys:'—'}</strong></span>
+            ${pr.nsDiff!=null?`<span style="font-weight:700;color:${pr.nsDiff===0?'#1a7a3c':pr.nsDiff>0?'#1a5080':'#9c6000'}">${pr.nsDiff>0?'+':''}${pr.nsDiff} variance</span>`:''}
+          </div>
+        </div>` : '';
+
+      return `<div class="panel" style="margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-weight:600;font-size:14px;">${_esc(item.product)}${item.location?` <span class="loc-badge">${_esc(item.location)}</span>`:''}</div>
+          <div style="font-size:12px;color:${pr.missing.length===0&&(pr.unexp||[]).length===0?'#1a7a3c':'#9c6000'};font-weight:600">
+            ${pr.matched.length}/${item.systemSerials.length} matched
+            ${pr.missing.length>0?' · ⚠ '+pr.missing.length+' missing':''}
+            ${(pr.unexp||[]).length>0?' · ❓ '+(pr.unexp||[]).length+' unexpected':''}
+          </div>
+        </div>
+        ${allRows.length ? `<div class="table-wrap"><table>
+          <thead><tr><th style="width:18%">Result</th><th style="width:62%">Serial</th><th style="width:20%"></th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table></div>` : '<div class="empty" style="padding:.5rem">Nothing to show</div>'}
+        ${nsSection}
+        ${pr.missing.length > 1 ? `<div style="margin-top:8px;"><button class="btn btn-ghost btn-xs audit-write-off-product" data-idx="${idx}" style="color:#9c2a00;border-color:#f5c6b0;">Write off all ${pr.missing.length} missing</button></div>` : ''}
+      </div>`;
     }).join('');
 
-    const serialSectionHtml = _state._report.length > 0 ? `
-      <div style="margin-bottom:16px;">
-        <div class="panel-title" style="margin-bottom:8px;">🔢 Serialised items variance</div>
-        <div class="table-wrap"><table>
-          <thead><tr>
-            <th style="width:11%">Result</th><th style="width:18%">Serial</th>
-            <th style="width:23%">Product</th><th style="width:13%">Category</th>
-            <th style="width:13%">Location</th><th style="width:11%">Cost</th><th style="width:11%"></th>
-          </tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table></div>
-      </div>` : '';
+    document.getElementById('audit-report-products').innerHTML = reportsHtml;
 
-    document.getElementById('audit-results-body').innerHTML = summaryHtml + nsReportHtml + serialSectionHtml +
-      `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-ghost btn-sm" id="btn-new-audit">↩ New audit</button>
-        ${missingRows.length > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-write-off-all" style="color:#9c2a00;border-color:#f5c6b0;">Write off all missing serials</button>` : ''}
-      </div>`;
-
-    document.getElementById('btn-new-audit')?.addEventListener('click', cancel);
-    document.getElementById('btn-write-off-all')?.addEventListener('click', _writeOffAll);
-    document.getElementById('audit-results-body').querySelectorAll('.audit-mark-lost').forEach(btn => {
-      btn.addEventListener('click', () => _markLost(btn.dataset.serial, btn));
+    // Wire write-off buttons
+    document.querySelectorAll('.audit-mark-lost').forEach(btn => {
+      btn.addEventListener('click', () => _writeOff([btn.dataset.serial], btn));
     });
-  }
-
-  // ── write-off ─────────────────────────────────────────────────────────
-  function _markLost(serial, btn) {
-    if (!confirm(`Write off "${serial}" as lost stock?\nThis removes it from inventory permanently.`)) return;
-    _doWriteOff([serial]);
-    if (btn) { btn.textContent = '✓ Written off'; btn.disabled = true; btn.style.color = '#888'; }
-    const rowEl = document.getElementById(`audit-row-${serial.replace(/[^a-z0-9]/gi,'_')}`);
-    if (rowEl) {
-      rowEl.classList.remove('audit-row-missing');
-      const badgeEl = rowEl.querySelector('.audit-badge');
-      if (badgeEl) { badgeEl.className='audit-badge'; badgeEl.style.cssText='background:#f5d8d8;color:#9c2a00;'; badgeEl.textContent='🗑 Written off'; }
-    }
-    _patchLatestAuditRecord();
-  }
-
-  function _writeOffAll() {
-    const missing = _state._report.filter(r => r.category === 'missing' && !_state.lostSet.has(r.serial.toUpperCase()));
-    if (!missing.length) return;
-    if (!confirm(`Write off ALL ${missing.length} missing serial${missing.length!==1?'s':''} as lost?\nThis removes them from inventory permanently.`)) return;
-    _doWriteOff(missing.map(r => r.serial));
-    missing.forEach(r => {
-      const btn   = document.querySelector(`[data-serial="${r.serial}"]`);
-      const rowEl = document.getElementById(`audit-row-${r.serial.replace(/[^a-z0-9]/gi,'_')}`);
-      if (btn) { btn.textContent='✓ Written off'; btn.disabled=true; btn.style.color='#888'; }
-      if (rowEl) {
-        rowEl.classList.remove('audit-row-missing');
-        const b = rowEl.querySelector('.audit-badge');
-        if (b) { b.className='audit-badge'; b.style.cssText='background:#f5d8d8;color:#9c2a00;'; b.textContent='🗑 Written off'; }
-      }
-    });
-    document.getElementById('btn-write-off-all')?.remove();
-    _patchLatestAuditRecord();
-  }
-
-  function _doWriteOff(serials) {
-    const now = new Date().toISOString();
-    serials.forEach(serial => {
-      const key  = serial.toUpperCase();
-      const info = _state.expectedMap[key] || {};
-      _state.lostSet.add(key);
-      DB.addMovement({
-        id: Date.now() + Math.random(), type: 'OUT',
-        product: info.product||'Unknown', category: info.category||'',
-        location: info.location||'', serials: [serial],
-        customer: 'Lost Stock — Audit Write-off', by: '', ref: `Audit: ${_state.scopeLabel}`,
-        date: now, isLost: true,
+    document.querySelectorAll('.audit-write-off-product').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pr = _report.productReports[parseInt(btn.dataset.idx)];
+        if (!pr || !pr.missing?.length) return;
+        const remaining = pr.missing.filter(s => !_lostSet.has(s.toUpperCase()));
+        if (!remaining.length) return;
+        if (!confirm(`Write off all ${remaining.length} missing serials for "${pr.item.product}" as lost?\nThis removes them from inventory permanently.`)) return;
+        _writeOff(remaining);
+        btn.remove();
       });
     });
   }
 
-  function _patchLatestAuditRecord() {
-    const records = DB.getAuditRecords();
-    if (!records.length) return;
-    records[records.length - 1].lost = _state.lostSet.size;
-    DB.save();
+  function _wireReportButtons() {
+    const newBtn = document.getElementById('btn-new-count');
+    if (newBtn && !newBtn._wired) { newBtn._wired = true; newBtn.addEventListener('click', _reset); }
+    const exportBtn = document.getElementById('btn-audit-export-report');
+    if (exportBtn && !exportBtn._wired) { exportBtn._wired = true; exportBtn.addEventListener('click', _exportCSV); }
   }
 
-  // ── cancel ────────────────────────────────────────────────────────────
-  function cancel() {
-    _state = null;
-    document.getElementById('audit-setup-panel').style.display    = '';
-    document.getElementById('audit-active-panel').style.display   = 'none';
-    document.getElementById('audit-results-body').innerHTML       = '';
-    document.getElementById('audit-scan-feedback').textContent    = '';
-    document.getElementById('btn-finish-audit').textContent       = 'Finish Audit';
-    document.getElementById('btn-finish-audit').disabled          = false;
-    document.getElementById('audit-serial-input').disabled        = false;
-    document.getElementById('btn-audit-submit').disabled          = false;
-    document.getElementById('audit-progress-fill').style.width    = '0%';
-    document.getElementById('audit-count-matched').textContent    = '0';
-    document.getElementById('audit-count-missing').textContent    = '0';
-    document.getElementById('audit-count-unexpected').textContent = '0';
-    document.getElementById('btn-audit-export').style.display     = 'none';
-    _populateFilters();
+  // ── write-off ─────────────────────────────────────────────────────────
+  function _writeOff(serials, singleBtn) {
+    const conf = singleBtn
+      ? confirm(`Write off "${serials[0]}" as lost stock?\nThis removes it from inventory permanently.`)
+      : true; // already confirmed by caller
+    if (!conf) return;
+    const now = new Date().toISOString();
+    serials.forEach(serial => {
+      const key  = serial.toUpperCase();
+      if (_lostSet.has(key)) return;
+      _lostSet.add(key);
+      const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key) || {};
+      DB.addMovement({
+        id: Date.now() + Math.random(), type: 'OUT',
+        product: info.product||'Unknown', category: info.category||'', location: info.location||'',
+        serials: [serial], customer: 'Lost Stock — Count Write-off',
+        by: '', ref: `Count: ${_countList.map(i=>i.product).join(', ')}`,
+        date: now, isLost: true,
+      });
+      // Update UI
+      if (singleBtn) {
+        singleBtn.textContent = '✓ Written off'; singleBtn.disabled = true; singleBtn.style.color = '#888';
+        const rowEl = document.getElementById(`audit-row-${serial.replace(/[^a-z0-9]/gi,'_')}`);
+        if (rowEl) { rowEl.classList.remove('audit-row-missing'); const b=rowEl.querySelector('.audit-badge'); if(b){b.className='audit-badge';b.style.cssText='background:#f5d8d8;color:#9c2a00;';b.textContent='🗑 Written off';} }
+      }
+    });
+    // Patch DB record
+    const records = DB.getAuditRecords();
+    if (records.length) { records[records.length-1].lost = _lostSet.size; DB.save(); }
+  }
+
+  // ── cancel/reset ──────────────────────────────────────────────────────
+  function _cancel() {
+    if (!confirm('Cancel this count? Progress will be lost.')) return;
+    _reset();
+  }
+
+  function _reset() {
+    _countList = []; _scanned = {}; _nsCounts = {}; _lostSet = new Set();
+    _serialLookup = {}; _phase = 1; _report = null;
+    document.getElementById('audit-setup-panel').style.display  = '';
+    document.getElementById('audit-active-panel').style.display = 'none';
+    document.getElementById('audit-report-panel').style.display = 'none';
+    const input = document.getElementById('audit-serial-input');
+    if (input) { input.disabled = false; input.value = ''; }
+    const finBtn = document.getElementById('btn-finish-audit');
+    if (finBtn) { finBtn.disabled = false; finBtn.textContent = 'Complete Count'; }
+    _populateLocFilter();
+    _populateProductPicker();
+    _renderCountList();
     _renderHistory();
   }
 
   // ── export CSV ────────────────────────────────────────────────────────
   function _exportCSV() {
-    if (!_state) return;
-    const rows = [['Type','Result','Serial / Product','Category','Location','System Qty','Physical Qty','Variance','Cost','Written Off']];
-    // NS groups
-    Object.entries(_state.nsGroups).forEach(([k, g]) => {
-      const phys = _state.nsCounts[k];
-      const diff = (phys != null && !isNaN(phys)) ? phys - g.systemCount : '';
-      rows.push(['No-serial', diff===''?'Not counted':diff===0?'Correct':diff>0?'Over':'Short',
-        g.product, g.category||'', g.location||'', g.systemCount, phys!=null?phys:'', diff, '', '']);
+    if (!_report) return;
+    const rows = [['Product','Location','Type','Serial / Group','System Qty','Physical Qty','Variance','Result','Written Off']];
+    _report.productReports.forEach(pr => {
+      const item = pr.item;
+      if (pr.type === 'ns') {
+        rows.push([item.product, item.location||'', 'No-serial', item.product, item.systemNsCount, pr.phys!=null?pr.phys:'', pr.diff!=null?pr.diff:'', pr.diff===0?'Correct':pr.diff>0?'Over':'Short', '']);
+      } else {
+        (pr.missing||[]).forEach(s => rows.push([item.product, item.location||'', 'Serialised', s, 1, 0, -1, 'Missing', _lostSet.has(s.toUpperCase())?'Yes':'No']));
+        (pr.unexp||[]).forEach(s => rows.push([item.product, item.location||'', 'Serialised', s, 0, 1, 1, 'Unexpected', '']));
+        (pr.matched||[]).forEach(s => rows.push([item.product, item.location||'', 'Serialised', s, 1, 1, 0, 'Matched', 'No']));
+        if (pr.type === 'mixed') {
+          rows.push([item.product, item.location||'', 'No-serial', item.product+' (NS)', item.systemNsCount, pr.phys!=null?pr.phys:'', pr.nsDiff!=null?pr.nsDiff:'', pr.nsDiff===0?'Correct':pr.nsDiff>0?'Over':'Short', '']);
+        }
+      }
     });
-    // Serial items
-    (_state._report||[]).forEach(r => {
-      const label = r.category==='matched'?'Matched':r.category==='missing'?'Missing':'Unexpected';
-      const writtenOff = _state.lostSet.has(r.serial.toUpperCase()) ? 'Yes' : 'No';
-      rows.push(['Serialised', label, r.serial, r.info.category||'', r.info.location||'', 1, r.category==='matched'?1:0,
-        r.category==='matched'?0:r.category==='missing'?-1:1, r.info.cost!=null?r.info.cost:'', writtenOff]);
-    });
-    const csv  = rows.map(r => r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv  = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob = new Blob([csv],{type:'text/csv'});
-    const a    = Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`stock-audit-${new Date().toISOString().slice(0,10)}.csv`});
+    const a    = Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`stock-count-${new Date().toISOString().slice(0,10)}.csv`});
     a.click(); URL.revokeObjectURL(a.href);
   }
 
