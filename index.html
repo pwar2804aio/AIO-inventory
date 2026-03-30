@@ -25,6 +25,31 @@
     @media (prefers-color-scheme: dark) {
       .b-used { background: #2a0808 !important; color: #f09090 !important; border-color: #a32020 !important; }
     }
+    /* ── Stock condition summary pills ─────────────────────────────────── */
+    .stock-cond-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;
+      border: 1.5px solid transparent; cursor: pointer; transition: all .15s;
+      background: var(--bg-card); color: var(--text-main);
+    }
+    .stock-cond-pill:hover { opacity: .85; transform: translateY(-1px); }
+    .stock-cond-pill.pill-active { border-color: currentColor; }
+    .pill-working { color: #1a7a3c; border-color: #c3e6cb; background: #eaf7ee; }
+    .pill-rma     { color: #9c2a00; border-color: #f5c6b0; background: #fef0ea; }
+    .pill-tl      { color: #5a5a5a; border-color: #d0d0d0; background: #f5f5f5; }
+    .pill-clear   { color: var(--text-muted); border-color: var(--border); font-size: 11px; padding: 3px 8px; }
+    .pill-count   { font-weight: 700; font-size: 13px; }
+    .pill-working.pill-active { background: #c8f0d8; }
+    .pill-rma.pill-active     { background: #fdd9c8; }
+    .pill-tl.pill-active      { background: #e0e0e0; }
+    @media (prefers-color-scheme: dark) {
+      .pill-working { color: #5ae08a; border-color: #1a4a2a; background: #0e2918; }
+      .pill-rma     { color: #f09060; border-color: #4a2010; background: #2a1008; }
+      .pill-tl      { color: #aaa;    border-color: #444;    background: #222; }
+      .pill-working.pill-active { background: #1a4030; }
+      .pill-rma.pill-active     { background: #3a1a08; }
+      .pill-tl.pill-active      { background: #333; }
+    }
   </style>
 </head>
 <body>
@@ -81,7 +106,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v48</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v49</span>
     </nav>
   </header>
 
@@ -399,15 +424,18 @@
         </select>
         <select class="fi" id="inv-status-filter" style="width:160px;">
           <option value="">All status</option>
+          <option value="working">Working (clean)</option>
           <option value="in-stock">In stock</option>
           <option value="in-transit">In transit</option>
           <option value="cond-used">Used</option>
           <option value="cond-needs-testing">Needs Testing</option>
           <option value="cond-faulty">Faulty</option>
           <option value="cond-rma">RMA</option>
+          <option value="cond-fail-tl">Total Loss</option>
         </select>
         </select>
       </div>
+      <div id="inv-condition-summary" style="margin-bottom:10px;"></div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -727,13 +755,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=48"></script>
-<script src="js/auth-ui.js?v=48"></script>
-<script src="js/scanner.js?v=48"></script>
-<script src="js/db.js?v=48"></script>
-<script src="js/inventory.js?v=48"></script>
-<script src="js/reports.js?v=48"></script>
-<script src="js/ui.js?v=48"></script>
-<script src="js/app.js?v=48"></script>
+<script src="js/auth.js?v=49"></script>
+<script src="js/auth-ui.js?v=49"></script>
+<script src="js/scanner.js?v=49"></script>
+<script src="js/db.js?v=49"></script>
+<script src="js/inventory.js?v=49"></script>
+<script src="js/reports.js?v=49"></script>
+<script src="js/ui.js?v=49"></script>
+<script src="js/app.js?v=49"></script>
 </body>
 </html>
