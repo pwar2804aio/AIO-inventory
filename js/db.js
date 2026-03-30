@@ -11,7 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
-  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [] };
+  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [] };
   let _db    = null;
   let _ready = false;
   let _onReadyCallbacks = [];
@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[] };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -113,25 +113,21 @@ const DB = (() => {
   // NOTE: the 'used' field is NEVER modified here — it is permanent from receipt
   function updateSerialCondition(serial, condition, testedBy, testedDate, notes) {
     const s = serial.toUpperCase();
-    _data.movements = _data.movements.map(mv => {
-      if (mv.type === 'IN' && mv.serials.some(x => x.toUpperCase() === s)) {
-        // Preserve existing used flag unconditionally
-        const prevCondition = mv.condition || '';
-        // If passing (condition=''), keep used flag but clear servicing condition
-        // If setting rma/faulty/needs-testing, set that condition
-        const finalCondition = condition; // caller is responsible for correct value
-        return {
-          ...mv,
-          used:      mv.used === true || mv.used === 'true', // always preserved
-          condition: finalCondition,
-          testedBy:  testedBy  || mv.testedBy  || '',
-          testedAt:  testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? mv.testedAt || '' : (mv.testedAt || new Date().toISOString())),
-          testNotes: notes !== undefined ? notes : (mv.testNotes || ''),
-        };
-      }
-      return mv;
-    });
+    // Per-serial storage — prevents one serial's condition from bleeding across
+    // all serials that share the same batch IN movement
+    if (!_data.serialConditions) _data.serialConditions = {};
+    _data.serialConditions[s] = {
+      condition:  condition,
+      testedBy:   testedBy  || '',
+      testedAt:   testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? '' : new Date().toISOString()),
+      testNotes:  notes !== undefined ? notes : '',
+    };
     _save();
+  }
+  function getSerialCondition(serial) {
+    const s = serial.toUpperCase();
+    const sc = _data.serialConditions || {};
+    return s in sc ? sc[s] : null; // null = no per-serial override; caller falls back to movement
   }
   function addOrder(order)       { if(!_data.orders) _data.orders=[]; _data.orders.push(order); _save(); }
   function updateOrder(id,u)     { if(!_data.orders) return; const i=_data.orders.findIndex(o=>o.id===id); if(i>-1){_data.orders[i]={..._data.orders[i],...u};_save();} }
@@ -188,7 +184,7 @@ const DB = (() => {
   function getCustomLocations() { return _data.customLocations || []; }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
