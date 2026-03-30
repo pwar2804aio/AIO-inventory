@@ -85,6 +85,31 @@
       .bd-nonzero.bd-rma     { color: #f07050; }
       .bd-nonzero.bd-tl      { color: #aaa; }
     }
+    /* ── Workshop stat cards ────────────────────────────────────────── */
+    .svc-stat-card {
+      flex: 1; min-width: 130px; padding: 12px 16px; border-radius: 10px;
+      border: 1.5px solid transparent; text-align: center;
+    }
+    .svc-stat-count { font-size: 32px; font-weight: 700; line-height: 1.1; }
+    .svc-stat-label { font-size: 11px; font-weight: 600; margin: 3px 0 2px; text-transform: uppercase; letter-spacing: .5px; opacity: .75; }
+    .svc-stat-value { font-size: 13px; font-weight: 600; }
+    .svc-stat-total   { background:#f0f0f8; border-color:#d0d0e8; color:#3a3a7a; }
+    .svc-stat-testing { background:#e8f4ff; border-color:#b0d4f0; color:#1a5080; }
+    .svc-stat-faulty  { background:#fff8e0; border-color:#f0d880; color:#7a5000; }
+    .svc-stat-rma     { background:#fef0ea; border-color:#f5c6b0; color:#9c2a00; }
+    .svc-stat-tl      { background:#f5f5f5; border-color:#d8d8d8; color:#555;    }
+    /* ── Workshop per-product condition inline badges ────────────────── */
+    .cond-inline-testing { color:#1a5080; background:#e8f4ff; }
+    .cond-inline-faulty  { color:#7a5000; background:#fff8e0; }
+    @media (prefers-color-scheme: dark) {
+      .svc-stat-total   { background:#1a1a3a; border-color:#3a3a6a; color:#a0a0f0; }
+      .svc-stat-testing { background:#0a2030; border-color:#1a4060; color:#70b8f0; }
+      .svc-stat-faulty  { background:#2a2000; border-color:#504000; color:#f0c840; }
+      .svc-stat-rma     { background:#2a1008; border-color:#4a2010; color:#f09060; }
+      .svc-stat-tl      { background:#1e1e1e; border-color:#3a3a3a; color:#aaa; }
+      .cond-inline-testing { color:#70b8f0; background:#0a2030; }
+      .cond-inline-faulty  { color:#f0c840; background:#2a2000; }
+    }
   </style>
 </head>
 <body>
@@ -141,7 +166,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v51</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v52</span>
     </nav>
   </header>
 
@@ -557,6 +582,13 @@
       <span class="toolbar-title">Servicing</span>
       <span class="hint" style="margin-top:0;">Items flagged as Needs Testing, Faulty or RMA</span>
     </div>
+    <!-- Workshop stats summary -->
+    <div id="svc-stats-panel" class="panel" style="margin-bottom:1rem;"></div>
+    <!-- Workshop per-product breakdown -->
+    <div id="svc-breakdown-panel" class="panel" style="margin-bottom:1rem;display:none;">
+      <div class="panel-title">Workshop items by product</div>
+      <div id="svc-breakdown-table"></div>
+    </div>
     <div class="panel">
       <div class="search-bar">
         <input class="fi" id="svc-search" placeholder="Search serial, product, location..." />
@@ -572,14 +604,15 @@
         <table>
           <thead>
             <tr>
-              <th style="width:14%">Serial</th>
-              <th style="width:18%">Product</th>
-              <th style="width:11%">Category</th>
-              <th style="width:10%">Location</th>
-              <th style="width:9%">Flag</th>
-              <th style="width:10%">Tested by</th>
-              <th style="width:9%">Test date</th>
-              <th style="width:11%">Notes</th>
+              <th style="width:13%">Serial</th>
+              <th style="width:17%">Product</th>
+              <th style="width:10%">Category</th>
+              <th style="width:9%">Location</th>
+              <th style="width:8%">Flag</th>
+              <th style="width:8%">Cost</th>
+              <th style="width:9%">Tested by</th>
+              <th style="width:8%">Test date</th>
+              <th style="width:10%">Notes</th>
               <th style="width:8%"></th>
             </tr>
           </thead>
@@ -814,13 +847,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=51"></script>
-<script src="js/auth-ui.js?v=51"></script>
-<script src="js/scanner.js?v=51"></script>
-<script src="js/db.js?v=51"></script>
-<script src="js/inventory.js?v=51"></script>
-<script src="js/reports.js?v=51"></script>
-<script src="js/ui.js?v=51"></script>
-<script src="js/app.js?v=51"></script>
+<script src="js/auth.js?v=52"></script>
+<script src="js/auth-ui.js?v=52"></script>
+<script src="js/scanner.js?v=52"></script>
+<script src="js/db.js?v=52"></script>
+<script src="js/inventory.js?v=52"></script>
+<script src="js/reports.js?v=52"></script>
+<script src="js/ui.js?v=52"></script>
+<script src="js/app.js?v=52"></script>
 </body>
 </html>
