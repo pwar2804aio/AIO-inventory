@@ -122,6 +122,15 @@ const DB = (() => {
       testedAt:   testedDate ? (testedDate + 'T00:00:00.000Z') : (condition === '' ? '' : new Date().toISOString()),
       testNotes:  notes !== undefined ? notes : '',
     };
+    // Also scrub any movement-level condition for this serial so the fallback
+    // in getAllSerialRows can never bleed the old movement condition onto other
+    // serials in the same batch
+    _data.movements = _data.movements.map(mv => {
+      if (mv.type === 'IN' && (mv.condition || '') !== '' && mv.serials.some(x => x.toUpperCase() === s)) {
+        return { ...mv, condition: '' };
+      }
+      return mv;
+    });
     _save();
   }
   function getSerialCondition(serial) {
