@@ -36,25 +36,41 @@ const UI = (() => {
       lowBox.textContent = `⚠ Low stock: ${lowItems.map(v => `${v.product} (${v.inStock.size})`).join(', ')}`;
     } else { lowBox.style.display = 'none'; }
 
-    // Stock by product
+    // Stock by product — with per-product condition breakdown
     const maxStock = Math.max(...byProduct.map(p => p.inStock), 1);
     const grandTotalCost  = byProduct.reduce((a, p) => a + p.totalCost, 0);
     const grandTotalUnits = byProduct.reduce((a, p) => a + p.inStock + p.inTransit, 0);
     const fmt$ = n => n != null && n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--text-hint)">—</span>';
 
+    // Build per-product condition counts from all in-stock serial rows
+    const condMap = {};
+    Inventory.getAllSerialRows().filter(r => r.status === 'in-stock').forEach(r => {
+      if (!condMap[r.product]) condMap[r.product] = { working: 0, rma: 0, tl: 0 };
+      if      (r.condition === 'rma')     condMap[r.product].rma++;
+      else if (r.condition === 'fail-tl') condMap[r.product].tl++;
+      else                                condMap[r.product].working++;
+    });
+    const grandWorking = Object.values(condMap).reduce((a, c) => a + c.working, 0);
+    const grandRMA     = Object.values(condMap).reduce((a, c) => a + c.rma, 0);
+    const grandTL      = Object.values(condMap).reduce((a, c) => a + c.tl, 0);
+
     document.getElementById('dash-product-stock').innerHTML = byProduct.length
       ? `<table class="product-stock-table">
           <thead><tr>
-            <th style="width:24%">Product</th>
-            <th style="width:14%">Category</th>
-            <th style="width:20%">In stock</th>
-            <th style="width:10%">In transit</th>
-            <th style="width:12%">Avg cost</th>
-            <th style="width:10%">Units</th>
-            <th style="width:10%">Total value</th>
+            <th style="width:22%">Product</th>
+            <th style="width:13%">Category</th>
+            <th style="width:9%" title="Total units in stock">Total</th>
+            <th style="width:9%;color:#1a7a3c" title="Units with no condition flag — ready to deploy">✅ Working</th>
+            <th style="width:9%;color:#9c2a00" title="Units flagged for return to manufacturer">⛔ RMA</th>
+            <th style="width:9%;color:#666" title="Units written off as total loss">🗑 TL</th>
+            <th style="width:8%">In transit</th>
+            <th style="width:10%">Avg cost</th>
+            <th style="width:11%">Total value</th>
           </tr></thead>
           <tbody>
-            ${byProduct.map(p => `<tr>
+            ${byProduct.map(p => {
+              const c = condMap[p.product] || { working: 0, rma: 0, tl: 0 };
+              return `<tr>
               <td style="font-weight:500">${esc(p.product)}</td>
               <td><span class="cat-badge">${esc(p.category || '—')}</span></td>
               <td>
@@ -63,46 +79,27 @@ const UI = (() => {
                   <span style="font-size:13px;font-weight:600;color:var(--success-text)">${p.inStock}</span>
                 </div>
               </td>
+              <td><span class="cond-inline cond-inline-working">${c.working}</span></td>
+              <td>${c.rma > 0 ? `<span class="cond-inline cond-inline-rma">${c.rma}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
+              <td>${c.tl  > 0 ? `<span class="cond-inline cond-inline-tl">${c.tl}</span>`   : '<span style="color:var(--text-hint)">—</span>'}</td>
               <td>${p.inTransit > 0 ? `<span class="transit-pill">✈ ${p.inTransit}</span>` : '<span style="color:var(--text-hint)">—</span>'}</td>
               <td style="font-size:12px">${fmt$(p.avgCost)}</td>
-              <td style="font-size:12px;color:var(--text-muted)">${p.costedUnits > 0 ? p.costedUnits : '<span style="color:var(--text-hint)">—</span>'}</td>
               <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(p.totalCost)}</td>
-            </tr>`).join('')}
+            </tr>`;}).join('')}
           </tbody>
           <tfoot>
             <tr style="border-top:2px solid var(--aio-purple-light);">
               <td colspan="2" style="font-weight:700;font-size:12px;color:var(--text-muted);padding-top:10px;">Total</td>
               <td style="font-weight:700;font-size:13px;color:var(--success-text);padding-top:10px;">${grandTotalUnits}</td>
-              <td colspan="3" style="padding-top:10px;"></td>
+              <td style="font-weight:700;font-size:13px;color:#1a7a3c;padding-top:10px;">${grandWorking}</td>
+              <td style="font-weight:700;font-size:13px;color:#9c2a00;padding-top:10px;">${grandRMA > 0 ? grandRMA : '—'}</td>
+              <td style="font-weight:700;font-size:13px;color:#666;padding-top:10px;">${grandTL  > 0 ? grandTL  : '—'}</td>
+              <td colspan="2" style="padding-top:10px;"></td>
               <td style="font-weight:700;font-size:13px;color:var(--aio-purple);padding-top:10px;">$${grandTotalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             </tr>
           </tfoot>
         </table>`
       : '<div class="empty">No stock data yet</div>';
-
-    // ── Condition breakdown summary ───────────────────────────────────
-    const allInStock  = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
-    const cntWorking  = allInStock.filter(r => !r.condition).length;
-    const cntRMA      = allInStock.filter(r => r.condition === 'rma').length;
-    const cntTL       = allInStock.filter(r => r.condition === 'fail-tl').length;
-    const condSummary = document.getElementById('dash-condition-summary');
-    if (condSummary) {
-      condSummary.innerHTML = `
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <div class="cond-summary-card cond-working">
-            <div class="cond-summary-count">${cntWorking}</div>
-            <div class="cond-summary-label">✅ Working</div>
-          </div>
-          <div class="cond-summary-card cond-rma">
-            <div class="cond-summary-count">${cntRMA}</div>
-            <div class="cond-summary-label">⛔ In stock RMA</div>
-          </div>
-          <div class="cond-summary-card cond-tl">
-            <div class="cond-summary-count">${cntTL}</div>
-            <div class="cond-summary-label">🗑 In stock Total Loss</div>
-          </div>
-        </div>`;
-    }
 
     // ── Deployed stock by product ──────────────────────────────────────
     const deployedByProduct  = Inventory.getDeployedByProduct();
