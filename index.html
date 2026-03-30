@@ -110,6 +110,23 @@
       .cond-inline-testing { color:#70b8f0; background:#0a2030; }
       .cond-inline-faulty  { color:#f0c840; background:#2a2000; }
     }
+    /* ── Dashboard workshop mini cards ──────────────────────────────── */
+    .dash-wk-card { flex:1; min-width:110px; padding:10px 14px; border-radius:10px; border:1.5px solid transparent; text-align:center; }
+    .dash-wk-count { font-size:28px; font-weight:700; line-height:1.1; }
+    .dash-wk-label { font-size:11px; font-weight:600; margin-top:3px; opacity:.8; }
+    .dash-wk-value { font-size:12px; font-weight:600; margin-top:2px; }
+    .dash-wk-total   { background:#f0f0f8; border-color:#d0d0e8; color:#3a3a7a; }
+    .dash-wk-testing { background:#e8f4ff; border-color:#b0d4f0; color:#1a5080; }
+    .dash-wk-faulty  { background:#fff8e0; border-color:#f0d880; color:#7a5000; }
+    .dash-wk-rma     { background:#fef0ea; border-color:#f5c6b0; color:#9c2a00; }
+    .dash-wk-tl      { background:#f5f5f5; border-color:#d8d8d8; color:#555; }
+    @media (prefers-color-scheme: dark) {
+      .dash-wk-total   { background:#1a1a3a; border-color:#3a3a6a; color:#a0a0f0; }
+      .dash-wk-testing { background:#0a2030; border-color:#1a4060; color:#70b8f0; }
+      .dash-wk-faulty  { background:#2a2000; border-color:#504000; color:#f0c840; }
+      .dash-wk-rma     { background:#2a1008; border-color:#4a2010; color:#f09060; }
+      .dash-wk-tl      { background:#1e1e1e; border-color:#3a3a3a; color:#aaa; }
+    }
   </style>
 </head>
 <body>
@@ -166,7 +183,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v52</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v53</span>
     </nav>
   </header>
 
@@ -185,6 +202,10 @@
     <div class="panel" style="margin-bottom:1rem;">
       <div class="panel-title">Stock deployed by product</div>
       <div id="dash-deployed-stock"></div>
+    </div>
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Workshop</div>
+      <div id="dash-workshop"></div>
     </div>
     <div class="two-col">
       <div class="panel"><div class="panel-title">Recent movements</div><div id="dash-recent"></div></div>
@@ -847,13 +868,13 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=52"></script>
-<script src="js/auth-ui.js?v=52"></script>
-<script src="js/scanner.js?v=52"></script>
-<script src="js/db.js?v=52"></script>
-<script src="js/inventory.js?v=52"></script>
-<script src="js/reports.js?v=52"></script>
-<script src="js/ui.js?v=52"></script>
-<script src="js/app.js?v=52"></script>
+<script src="js/auth.js?v=53"></script>
+<script src="js/auth-ui.js?v=53"></script>
+<script src="js/scanner.js?v=53"></script>
+<script src="js/db.js?v=53"></script>
+<script src="js/inventory.js?v=53"></script>
+<script src="js/reports.js?v=53"></script>
+<script src="js/ui.js?v=53"></script>
+<script src="js/app.js?v=53"></script>
 </body>
 </html>
