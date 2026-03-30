@@ -80,6 +80,30 @@ const UI = (() => {
         </table>`
       : '<div class="empty">No stock data yet</div>';
 
+    // ── Condition breakdown summary ───────────────────────────────────
+    const allInStock  = Inventory.getAllSerialRows().filter(r => r.status === 'in-stock');
+    const cntWorking  = allInStock.filter(r => !r.condition).length;
+    const cntRMA      = allInStock.filter(r => r.condition === 'rma').length;
+    const cntTL       = allInStock.filter(r => r.condition === 'fail-tl').length;
+    const condSummary = document.getElementById('dash-condition-summary');
+    if (condSummary) {
+      condSummary.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div class="cond-summary-card cond-working">
+            <div class="cond-summary-count">${cntWorking}</div>
+            <div class="cond-summary-label">✅ Working</div>
+          </div>
+          <div class="cond-summary-card cond-rma">
+            <div class="cond-summary-count">${cntRMA}</div>
+            <div class="cond-summary-label">⛔ In stock RMA</div>
+          </div>
+          <div class="cond-summary-card cond-tl">
+            <div class="cond-summary-count">${cntTL}</div>
+            <div class="cond-summary-label">🗑 In stock Total Loss</div>
+          </div>
+        </div>`;
+    }
+
     // ── Deployed stock by product ──────────────────────────────────────
     const deployedByProduct  = Inventory.getDeployedByProduct();
     const deployedGrandTotal = deployedByProduct.reduce((a, p) => a + p.totalCost, 0);
