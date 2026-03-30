@@ -676,12 +676,12 @@ const UI = (() => {
         ${cell(p.faulty,  'bd-faulty')}
         ${cell(p.rma,     'bd-rma')}
         ${cell(p.tl,      'bd-tl')}
-        <td><button class="bd-filter-btn" data-product="${esc(p.product)}" title="Filter serials below">▼</button></td>
+        <td><button class="bd-filter-btn" data-product="${esc(p.product)}" title="Show serials for this product">${_invProductFilter === p.product ? "▲" : "▼"}</button></td>
       </tr>`).join('');
 
     // Totals row
     const tot = rows.reduce((a,p) => ({ total: a.total+p.total, working: a.working+p.working, testing: a.testing+p.testing, faulty: a.faulty+p.faulty, rma: a.rma+p.rma, tl: a.tl+p.tl }), { total:0, working:0, testing:0, faulty:0, rma:0, tl:0 });
-    const tfoot = tbody.querySelector('tfoot') || (() => { const tf = document.createElement('tfoot'); tbody.parentNode.appendChild(tf); return tf; })();
+    const tfoot = tbody.parentNode.querySelector('tfoot') || (() => { const tf = document.createElement('tfoot'); tbody.parentNode.appendChild(tf); return tf; })();
     tfoot.innerHTML = `<tr class="bd-tfoot">
       <td colspan="2" style="padding:9px 12px;">Total</td>
       <td class="bd-total">${tot.total}</td>
@@ -699,6 +699,12 @@ const UI = (() => {
         _invProductFilter = _invProductFilter === tr.dataset.product ? '' : tr.dataset.product;
         renderStockBreakdown();
         renderStockList();
+        if (_invProductFilter) {
+          setTimeout(() => {
+            const serialPanel = document.getElementById('inv-serial-panel');
+            if (serialPanel) serialPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 50);
+        }
       });
     });
     tbody.querySelectorAll('.bd-filter-btn').forEach(btn => {
@@ -707,6 +713,13 @@ const UI = (() => {
         _invProductFilter = _invProductFilter === btn.dataset.product ? '' : btn.dataset.product;
         renderStockBreakdown();
         renderStockList();
+        // Scroll to serial panel so user sees the filtered results
+        if (_invProductFilter) {
+          setTimeout(() => {
+            const serialPanel = document.getElementById('inv-serial-panel');
+            if (serialPanel) serialPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 50);
+        }
       });
     });
 
