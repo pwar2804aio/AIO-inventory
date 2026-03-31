@@ -515,26 +515,36 @@
   function submitOrder() {
     // Sync fields from DOM
     ordRows.forEach(row => {
-      const qtyEl  = document.getElementById(`${row.id}-ord-qty`);
-      const costEl = document.getElementById(`${row.id}-ord-cost`);
-      const selEl  = document.getElementById(`${row.id}-ord-product`);
+      const qtyEl    = document.getElementById(`${row.id}-ord-qty`);
+      const costEl   = document.getElementById(`${row.id}-ord-cost`);
+      const selEl    = document.getElementById(`${row.id}-ord-product`);
       const customEl = document.getElementById(`${row.id}-ord-product-custom`);
-      if (selEl) row.product = selEl.value === 'Other' ? (customEl?.value.trim()||'Other') : selEl.value;
-      if (qtyEl)  row.qty      = parseInt(qtyEl.value) || '';
-      if (costEl) row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+      if (selEl)   row.product  = selEl.value === 'Other' ? (customEl?.value.trim()||'Other') : selEl.value;
+      if (qtyEl)   row.qty      = parseInt(qtyEl.value) || '';
+      if (costEl)  row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
     });
+
+    // Read tax fields
+    const taxRateRaw   = document.getElementById('ord-tax-rate')?.value.trim();
+    const taxAmountRaw = document.getElementById('ord-tax-amount')?.value.trim();
+    const taxRef       = document.getElementById('ord-tax-ref')?.value.trim() || '';
+    const taxRate      = taxRateRaw   && taxRateRaw   !== '' ? parseFloat(taxRateRaw)   : null;
+    const taxAmount    = taxAmountRaw && taxAmountRaw !== '' ? parseFloat(taxAmountRaw) : null;
+
     try {
       const order = Inventory.createOrder({
         supplier:   document.getElementById('ord-supplier').value.trim(),
         poNumber:   document.getElementById('ord-po').value.trim(),
         expectedBy: document.getElementById('ord-expected').value,
         products:   ordRows,
+        taxRate, taxAmount, taxRef,
       });
       clearOrderForm();
       UI.renderOrderList();
       UI.refreshSmartSelects();
-      const total = order.products.reduce((a, p) => a + p.qty, 0);
-      UI.showAlert(`Order placed — ${total} unit${total!==1?'s':''} on PO ${order.poNumber}`, 'success');
+      const total  = order.products.reduce((a, p) => a + p.qty, 0);
+      const taxMsg = (order.taxAmount||0) > 0 ? ` · Tax $${order.taxAmount.toFixed(2)} · Total $${order.totalWithTax.toFixed(2)}` : '';
+      UI.showAlert(`Order placed — ${total} unit${total!==1?'s':''} on PO ${order.poNumber}${taxMsg}`, 'success');
     } catch(err) { UI.showAlert(err.message, 'error'); }
   }
 
