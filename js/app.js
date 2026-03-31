@@ -1140,6 +1140,80 @@
   bind('btn-cancel-product-edit','click', () => { clearProductForm(); });
   bind('btn-submit-supplier',   'click', submitSupplier);
   bind('btn-cancel-supplier-edit', 'click', () => { clearSupplierForm(); document.getElementById('btn-cancel-supplier-edit').style.display='none'; });
+  function _wireOrderTaxPreview() {
+    ['ord-tax-rate','ord-tax-amount','ord-tax-ref'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el._taxWired) { el._taxWired = true; el.addEventListener('input', _updateOrderTaxPreview); }
+    });
+    // Also wire qty/cost changes to update preview
+    ordRows.forEach(r => {
+      ['ord-qty','ord-cost'].forEach(suffix => {
+        const el = document.getElementById(`${r.id}-${suffix}`);
+        if (el && !el._taxWired) { el._taxWired = true; el.addEventListener('input', _updateOrderTaxPreview); }
+      });
+    });
+    _updateOrderTaxPreview();
+  }
+
+  function _updateOrderTaxPreview() {
+    // Sync current rows
+    ordRows.forEach(row => {
+      const qtyEl  = document.getElementById(`${row.id}-ord-qty`);
+      const costEl = document.getElementById(`${row.id}-ord-cost`);
+      if (qtyEl)  row.qty      = parseInt(qtyEl.value)   || 0;
+      if (costEl) row.unitCost = costEl.value !== '' ? parseFloat(costEl.value) : null;
+    });
+
+    const subtotal   = ordRows.reduce((a, r) => a + (parseFloat(r.unitCost)||0) * (parseInt(r.qty)||0), 0);
+    const taxRateV   = parseFloat(document.getElementById('ord-tax-rate')?.value)  || 0;
+    const taxAmtV    = parseFloat(document.getElementById('ord-tax-amount')?.value) || 0;
+    const resolvedTax = taxAmtV > 0 ? taxAmtV : (taxRateV > 0 && subtotal > 0 ? subtotal * taxRateV / 100 : 0);
+    const preview     = document.getElementById('ord-tax-preview');
+    const summary     = document.getElementById('ord-total-summary');
+
+    if (resolvedTax <= 0 || subtotal <= 0) {
+      if (preview) preview.style.display = 'none';
+      if (summary) { summary.style.display = ''; summary.innerHTML = subtotal > 0 ? `<span style="color:var(--aio-purple);font-weight:700;">Subtotal: $${subtotal.toFixed(2)}</span>` : ''; }
+      return;
+    }
+
+    const rows = ordRows.filter(r => r.product && (parseFloat(r.unitCost)||0) > 0 && (parseInt(r.qty)||0) > 0);
+    if (preview && rows.length) {
+      preview.style.display = '';
+      preview.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Tax split preview</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr>
+            <th style="text-align:left;padding:3px 6px;color:var(--text-hint);">Product</th>
+            <th style="text-align:right;padding:3px 6px;color:var(--text-hint);">Subtotal</th>
+            <th style="text-align:right;padding:3px 6px;color:var(--text-hint);">Tax share</th>
+            <th style="text-align:right;padding:3px 6px;color:var(--text-hint);">Tax/unit</th>
+            <th style="text-align:right;padding:3px 6px;color:var(--aio-purple);">Landed/unit</th>
+          </tr></thead>
+          <tbody>${rows.map(r => {
+            const lineVal    = (parseFloat(r.unitCost)||0) * (parseInt(r.qty)||0);
+            const taxShare   = (lineVal / subtotal) * resolvedTax;
+            const taxPerUnit = parseInt(r.qty) > 0 ? taxShare / parseInt(r.qty) : 0;
+            const landed     = (parseFloat(r.unitCost)||0) + taxPerUnit;
+            return `<tr>
+              <td style="padding:3px 6px;font-weight:500">${r.product||'—'}</td>
+              <td style="padding:3px 6px;text-align:right">$${lineVal.toFixed(2)}</td>
+              <td style="padding:3px 6px;text-align:right;color:#9c6000">$${taxShare.toFixed(2)}</td>
+              <td style="padding:3px 6px;text-align:right;color:#9c6000">$${taxPerUnit.toFixed(4)}</td>
+              <td style="padding:3px 6px;text-align:right;font-weight:700;color:var(--aio-purple)">$${landed.toFixed(2)}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`;
+    }
+
+    if (summary) {
+      summary.style.display = '';
+      summary.innerHTML = `
+        <span style="margin-right:16px;">Subtotal: <strong>$${subtotal.toFixed(2)}</strong></span>
+        <span style="margin-right:16px;color:#9c6000;">Tax: <strong>$${resolvedTax.toFixed(2)}</strong>${taxRateV > 0 ? ` (${taxRateV}%)` : ''}</span>
+        <span style="color:var(--aio-purple);font-weight:700;">Total inc. tax: $${(subtotal + resolvedTax).toFixed(2)}</span>`;
+    }
+  }
+
   bind('btn-submit-order',      'click', submitOrder);
   bind('btn-submit-transit',    'click', submitTransit);
   bind('btn-submit-out',        'click', submitStockOut);
