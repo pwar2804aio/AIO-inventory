@@ -309,11 +309,29 @@ const AuthUI = (() => {
         </td>
       </tr>`).join('') : '';
 
+      // Pending users — Firebase Auth exists, awaiting first login to create Firestore profile
+      const pendingUsersMap = (typeof DB !== 'undefined') ? (DB.getData().pendingUsers || {}) : {};
+      const pendingList = Object.entries(pendingUsersMap).map(([email, p]) => ({ email, ...p }));
+      const pendingRows = pendingList.map(p => `<tr>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-weight:500;">${esc(p.name || '—')}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px;">${esc(p.email)}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);">${p.role || 'edit'} · awaiting login</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;display:flex;gap:6px;justify-content:flex-end;">
+          <button class="btn btn-ghost btn-xs" data-reset-pass="${esc(p.email)}" style="font-size:11px;">Send reset email</button>
+          <button class="btn btn-ghost btn-xs" data-remove-pending="${esc(p.email)}" style="color:var(--danger-text);border-color:var(--danger-border);font-size:11px;">Remove</button>
+        </td>
+      </tr>`).join('');
+
       container.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead><tr>${th('Name')}${th('Email')}${th('Role')}<th style="border-bottom:1px solid var(--border);"></th></tr></thead>
           <tbody>${activeRows}</tbody>
         </table>
+        ${pendingList.length ? `
+          <div style="margin-top:14px;margin-bottom:6px;font-size:10px;font-weight:700;color:var(--aio-orange-dark, #c05000);text-transform:uppercase;letter-spacing:.06em;">Pending — awaiting first login</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tbody>${pendingRows}</tbody>
+          </table>` : ''}
         ${removed.length ? `
           <div style="margin-top:14px;margin-bottom:6px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;">Removed users</div>
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -352,6 +370,15 @@ const AuthUI = (() => {
             alert('Error reactivating: ' + (e.message || 'Unknown'));
             btn.textContent = 'Reactivate'; btn.disabled = false;
           }
+        });
+      });
+
+      // Wire remove-pending buttons
+      container.querySelectorAll('button[data-remove-pending]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`Remove pending profile for ${btn.dataset.removePending}?`)) return;
+          if (typeof DB !== 'undefined') DB.removePendingUser(btn.dataset.removePending);
+          await refreshUsersList();
         });
       });
 
