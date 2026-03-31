@@ -49,15 +49,12 @@ const Auth = (() => {
             await _so(_ga());
             return;
           } else {
-            // No profile — check pending_users by email (admin pre-created before UID was known)
-            const { collection: _col, query: _q, where: _w, getDocs: _gds } =
-              await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-            const pendingSnap = await _gds(_q(_col(db, 'pending_users'), _w('email', '==', user.email)));
-            if (!pendingSnap.empty) {
-              const pending = pendingSnap.docs[0].data();
+            // No profile — check DB pendingUsers (stored in inventory/main, no extra collection/rules needed)
+            const pending = typeof DB !== 'undefined' ? DB.getPendingUser(user.email) : null;
+            if (pending) {
               const profile = { name: pending.name, email: user.email, role: pending.role, createdAt: new Date().toISOString() };
               await _sd(_doc(db, 'users', user.uid), profile);
-              await _dd(pendingSnap.docs[0].ref); // clean up pending
+              if (typeof DB !== 'undefined') DB.removePendingUser(user.email);
               _userProfile = profile;
             } else {
               // Truly first login with no pre-created profile
@@ -190,16 +187,10 @@ const UserManager = (() => {
     await sendPasswordResetEmail(getAuth(), email);
   }
 
-  async function addPendingUser(email, name, role) {
-    // Pre-create a profile for a ghost Auth account (Firebase Auth exists, Firestore doesn't).
-    // When they next log in, onAuthStateChanged will migrate this to users/{uid}.
-    const { getFirestore, collection, addDoc, query, where, getDocs, deleteDoc } =
-      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-    const db = getFirestore();
-    // Remove any existing pending entry for this email first
-    const existing = await getDocs(query(collection(db, 'pending_users'), where('email', '==', email)));
-    for (const d of existing.docs) await deleteDoc(d.ref);
-    await addDoc(collection(db, 'pending_users'), { email, name, role, createdAt: new Date().toISOString() });
+  function addPendingUser(email, name, role) {
+    // Stored in DB (inventory/main) — no separate Firestore collection needed, no extra rules.
+    // On next login, onAuthStateChanged reads this and creates their users/{uid} profile.
+    DB.setPendingUser(email, name, role);
   }
 
   return { listUsers, addUser, addPendingUser, updateUserRole, deleteUser, reactivateUser, sendPasswordReset };
