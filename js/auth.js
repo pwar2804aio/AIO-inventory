@@ -142,13 +142,35 @@ const UserManager = (() => {
   }
 
   async function deleteUser(uid) {
-    const { getFirestore, doc, deleteDoc } =
+    // Soft-delete: mark as deleted in Firestore but keep the Firebase Auth account.
+    // This allows reactivation later without hitting email-already-in-use.
+    const { getFirestore, doc, updateDoc } =
       await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-    await deleteDoc(doc(getFirestore(), 'users', uid));
-    // Note: Firebase Auth account deletion requires admin SDK — we just remove the profile
+    await updateDoc(doc(getFirestore(), 'users', uid), {
+      deleted: true,
+      deletedAt: new Date().toISOString(),
+    });
   }
 
-  return { listUsers, addUser, updateUserRole, deleteUser };
+  async function reactivateUser(uid, name, role) {
+    // Restore a soft-deleted user: clear the deleted flag and update profile.
+    const { getFirestore, doc, updateDoc } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await updateDoc(doc(getFirestore(), 'users', uid), {
+      name, role,
+      deleted: false,
+      deletedAt: null,
+      reactivatedAt: new Date().toISOString(),
+    });
+  }
+
+  async function sendPasswordReset(email) {
+    const { getAuth, sendPasswordResetEmail } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await sendPasswordResetEmail(getAuth(), email);
+  }
+
+  return { listUsers, addUser, updateUserRole, deleteUser, reactivateUser, sendPasswordReset };
 })();
 
 // Start auth immediately
