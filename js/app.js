@@ -963,6 +963,8 @@
     const customer = document.getElementById('out-customer').value.trim();
     const by       = document.getElementById('out-by').value.trim();
     const ref      = document.getElementById('out-ref').value.trim();
+    const mode     = document.querySelector('input[name="out-mode"]:checked')?.value || 'stage';
+    const isStage  = mode === 'stage';
 
     if (!customer) { UI.showAlert('Customer / account is required.', 'error'); return; }
 
@@ -981,9 +983,8 @@
       const isNoSerial = inStock.length > 0 && inStock.every(s => s.startsWith('NS-'));
 
       if (isNoSerial) {
-        if (!row.qty || row.qty < 1) { UI.showAlert(`Enter a quantity to dispatch for "${row.product}".`, 'error'); return; }
+        if (!row.qty || row.qty < 1) { UI.showAlert(`Enter a quantity for "${row.product}".`, 'error'); return; }
         if (row.qty > inStock.length) { UI.showAlert(`Only ${inStock.length} unit${inStock.length!==1?'s':''} of "${row.product}" available.`, 'error'); return; }
-        // Select the NS- serials to dispatch
         row.serials = inStock.slice(0, row.qty);
       } else {
         if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
@@ -992,14 +993,49 @@
 
     try {
       let totalUnits = 0;
-      outRows.forEach(row => {
-        Inventory.stockOut({ customer, by, ref, serials: row.serials });
-        totalUnits += row.serials.length;
-      });
-      clearStockOut();
-      UI.renderDashboard();
-      UI.showAlert(`${totalUnits} unit${totalUnits!==1?'s':''} dispatched to "${customer}"`, 'success');
+      if (isStage) {
+        // Stage for deployment — stays in Stock Holding, tagged to customer
+        outRows.forEach(row => {
+          Inventory.stagePendingDeployment({ customer, by, ref, serials: row.serials });
+          totalUnits += row.serials.length;
+        });
+        clearStockOut();
+        UI.renderDashboard();
+        UI.showAlert(`${totalUnits} unit${totalUnits!==1?'s':''} staged for deployment to "${customer}" — confirm in Stock Deployed when ready`, 'success');
+      } else {
+        // Dispatch now — immediately moves to Stock Deployed
+        outRows.forEach(row => {
+          Inventory.stockOut({ customer, by, ref, serials: row.serials });
+          totalUnits += row.serials.length;
+        });
+        clearStockOut();
+        UI.renderDashboard();
+        UI.showAlert(`${totalUnits} unit${totalUnits!==1?'s':''} dispatched to "${customer}"`, 'success');
+      }
     } catch(err) { UI.showAlert(err.message, 'error'); }
+  }
+
+  // Wire mode toggle to update labels and button text
+  function _wireOutModeToggle() {
+    document.querySelectorAll('input[name="out-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const isStage = radio.value === 'stage';
+        const title    = document.getElementById('out-panel-title');
+        const toolbarT = document.getElementById('out-toolbar-title');
+        const byLabel  = document.getElementById('out-by-label');
+        const btn      = document.getElementById('btn-submit-out');
+        if (title)    title.textContent    = isStage ? 'Stage for deployment — attach to customer' : 'Dispatch details';
+        if (toolbarT) toolbarT.textContent = isStage ? 'Stage for deployment' : 'Dispatch stock';
+        if (byLabel)  byLabel.textContent  = isStage ? 'Staged by' : 'Dispatched by';
+        if (btn) {
+          btn.textContent = isStage ? 'Stage all' : 'Dispatch all';
+          btn.className   = isStage ? 'btn btn-orange' : 'btn btn-danger';
+        }
+      });
+    });
+    // Set initial state
+    const initial = document.querySelector('input[name="out-mode"]:checked');
+    if (initial) initial.dispatchEvent(new Event('change'));
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
@@ -1030,7 +1066,7 @@
     if (view === 'stocktake')  Audit.init();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
-    if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); }
+    if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); _wireOutModeToggle(); }
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
   }
 
