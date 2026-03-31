@@ -686,10 +686,18 @@ Items will remain in Stock Holding with no customer attached.`)) return;
   }
 
   function populateDeployedFilters() {
+    // Customer filter
     const customers = Inventory.getCustomers();
-    const sel = document.getElementById('dep-customer-filter');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">All customers</option>' + customers.map(c => `<option value="${esc(c)}"${c===cur?' selected':''}>${esc(c)}</option>`).join('');
+    const custSel = document.getElementById('dep-customer-filter');
+    const curCust = custSel.value;
+    custSel.innerHTML = '<option value="">All customers</option>' + customers.map(c => `<option value="${esc(c)}"${c===curCust?' selected':''}>${esc(c)}</option>`).join('');
+    // Category filter — also needed here, not just in populateCategoryFilters
+    const catSel = document.getElementById('dep-cat-filter');
+    if (catSel) {
+      const curCat = catSel.value;
+      catSel.innerHTML = '<option value="">All categories</option>' +
+        CATEGORIES.map(c => `<option value="${esc(c)}"${c===curCat?' selected':''}>${esc(c)}</option>`).join('');
+    }
   }
 
   function exportDeployedCSV() {
