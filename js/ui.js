@@ -582,6 +582,70 @@ const UI = (() => {
     const catF    = document.getElementById('dep-cat-filter').value;
     const custF   = document.getElementById('dep-customer-filter').value;
 
+    // ── Pending deployments section ─────────────────────────────────
+    const pendingPanel = document.getElementById('dep-pending-panel');
+    const pendingBody  = document.getElementById('dep-pending-body');
+    const pendingList  = DB.getPendingDeployments();
+    if (pendingPanel && pendingBody) {
+      if (pendingList.length) {
+        pendingPanel.style.display = '';
+        pendingBody.innerHTML = pendingList.map(pd => {
+          const totalCost = pd.serials
+            .map(s => DB.getSerialCost(s))
+            .filter(c => c != null)
+            .reduce((a, c) => a + c, 0);
+          const costed = pd.serials.filter(s => DB.getSerialCost(s) != null).length;
+          return `<div class="dep-pending-group">
+            <div class="dep-pending-group-header">
+              <div>
+                <span class="dep-pending-group-title">${esc(pd.customer)}</span>
+                <span class="cat-badge" style="margin-left:8px;">${esc(pd.product)}</span>
+                ${pd.location ? `<span class="loc-badge" style="margin-left:6px;">${esc(pd.location)}</span>` : ''}
+                <span class="badge-pending-deploy" style="margin-left:8px;">📋 Pending</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <span style="font-size:12px;color:var(--text-muted);">${pd.serials.length} unit${pd.serials.length!==1?'s':''}${costed>0?` · $${totalCost.toFixed(2)}`:''}${pd.stagedAt ? ' · Staged '+fmtDate(pd.stagedAt) : ''}</span>
+                <button class="btn btn-orange btn-sm dep-confirm-btn" data-id="${pd.id}">✓ Confirm Deployed</button>
+                <button class="btn btn-ghost btn-sm dep-unstage-btn" data-id="${pd.id}" style="color:var(--danger-text);">✕ Cancel</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);font-family:var(--mono);">${pd.serials.join(' · ')}</div>
+          </div>`;
+        }).join('');
+
+        // Wire confirm buttons
+        pendingBody.querySelectorAll('.dep-confirm-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pd = DB.getPendingDeployments().find(p => p.id == btn.dataset.id);
+            if (!pd) return;
+            if (!confirm(`Confirm deployment of ${pd.serials.length} unit${pd.serials.length!==1?'s':''} to "${pd.customer}"?
+
+This will remove them from Stock Holding and add them to Stock Deployed.`)) return;
+            try {
+              Inventory.confirmDeployment(Number(btn.dataset.id));
+              UI.renderDashboard && UI.renderDashboard();
+              renderDeployed();
+            } catch(e) { UI.showAlert(e.message, 'error'); }
+          });
+        });
+
+        // Wire cancel/unstage buttons
+        pendingBody.querySelectorAll('.dep-unstage-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pd = DB.getPendingDeployments().find(p => p.id == btn.dataset.id);
+            if (!pd) return;
+            if (!confirm(`Cancel staged deployment for "${pd.customer}"?
+
+Items will remain in Stock Holding with no customer attached.`)) return;
+            DB.removePendingDeployment(Number(btn.dataset.id));
+            renderDeployed();
+          });
+        });
+      } else {
+        pendingPanel.style.display = 'none';
+      }
+    }
+
     let rows = Inventory.getDeployedSerialRows().filter(r => {
       const ms = !search  || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.customer.toLowerCase().includes(search);
       const mc = !catF    || r.category === catF;
@@ -740,6 +804,9 @@ const UI = (() => {
     const locF    = document.getElementById('inv-loc-filter').value;
     const statusF = document.getElementById('inv-status-filter').value;
     const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
+    // Serials staged for pending deployment (show badge in stock list)
+    const _pendingDeploySerials = typeof Inventory !== 'undefined' && Inventory.getPendingDeploymentSerials
+      ? Inventory.getPendingDeploymentSerials() : new Set();
 
     let rows = Inventory.getAllSerialRows().filter(r => {
       const ms = !search || r.serial.toLowerCase().includes(search) || r.product.toLowerCase().includes(search) || r.location.toLowerCase().includes(search);
@@ -798,6 +865,7 @@ const UI = (() => {
             <span class="badge ${r.status==='in-stock'?'b-ok':'b-transit'}">${r.status==='in-stock'?'In stock':'In transit'}</span>
             ${r.used ? '<span class="badge b-used" style="margin-left:4px;">USED</span>' : ''}
             ${r.condition ? `<span class="badge b-condition b-cond-${r.condition}" style="margin-left:4px;">${_conditionLabel(r.condition)}</span>` : ''}
+            ${_pendingDeploySerials.has(r.serial.toUpperCase()) ? '<span class="badge-pending-deploy" style="margin-left:4px;">📋 Pending Deploy</span>' : ''}
           </td>
           <td class="${isPOLocked ? 'cost-cell-locked' : 'cost-cell'}"
             data-product="${esc(r.product)}" data-serial="${esc(r.serial)}"
