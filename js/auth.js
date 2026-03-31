@@ -37,12 +37,32 @@ const Auth = (() => {
         _currentUser = user;
         // Load profile from Firestore users collection
         try {
-          const snap = await getDoc(doc(db, 'users', user.uid));
-          if (snap.exists()) {
+          const { getDoc: _gd, setDoc: _sd, doc: _doc, deleteDoc: _dd } =
+            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+          const snap = await _gd(_doc(db, 'users', user.uid));
+          if (snap.exists() && !snap.data().deleted) {
             _userProfile = snap.data();
+          } else if (snap.exists() && snap.data().deleted) {
+            // Soft-deleted — treat as logged out
+            _userProfile = null;
+            const { getAuth: _ga, signOut: _so } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+            await _so(_ga());
+            return;
           } else {
-            // First login — create basic profile from email
-            _userProfile = { name: user.email, email: user.email, role: 'view' };
+            // No profile — check pending_users by email (admin pre-created before UID was known)
+            const { collection: _col, query: _q, where: _w, getDocs: _gds } =
+              await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const pendingSnap = await _gds(_q(_col(db, 'pending_users'), _w('email', '==', user.email)));
+            if (!pendingSnap.empty) {
+              const pending = pendingSnap.docs[0].data();
+              const profile = { name: pending.name, email: user.email, role: pending.role, createdAt: new Date().toISOString() };
+              await _sd(_doc(db, 'users', user.uid), profile);
+              await _dd(pendingSnap.docs[0].ref); // clean up pending
+              _userProfile = profile;
+            } else {
+              // Truly first login with no pre-created profile
+              _userProfile = { name: user.email, email: user.email, role: 'view' };
+            }
           }
         } catch(e) {
           _userProfile = { name: user.email, email: user.email, role: 'view' };
@@ -170,7 +190,19 @@ const UserManager = (() => {
     await sendPasswordResetEmail(getAuth(), email);
   }
 
-  return { listUsers, addUser, updateUserRole, deleteUser, reactivateUser, sendPasswordReset };
+  async function addPendingUser(email, name, role) {
+    // Pre-create a profile for a ghost Auth account (Firebase Auth exists, Firestore doesn't).
+    // When they next log in, onAuthStateChanged will migrate this to users/{uid}.
+    const { getFirestore, collection, addDoc, query, where, getDocs, deleteDoc } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const db = getFirestore();
+    // Remove any existing pending entry for this email first
+    const existing = await getDocs(query(collection(db, 'pending_users'), where('email', '==', email)));
+    for (const d of existing.docs) await deleteDoc(d.ref);
+    await addDoc(collection(db, 'pending_users'), { email, name, role, createdAt: new Date().toISOString() });
+  }
+
+  return { listUsers, addUser, addPendingUser, updateUserRole, deleteUser, reactivateUser, sendPasswordReset };
 })();
 
 // Start auth immediately
