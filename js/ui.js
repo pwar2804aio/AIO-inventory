@@ -667,7 +667,7 @@ Items will remain in Stock Holding with no customer attached.`)) return;
         <td><strong>${esc(r.customer || '—')}</strong></td>
         <td style="font-size:11px;color:var(--text-muted)">${esc(r.by || '—')}</td>
         <td style="font-size:11px;color:var(--text-hint)">${fmtDateFull(r.date)}</td>
-        <td style="font-size:12px">${r.cost != null ? '£' + r.cost.toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px">${r.cost != null ? '$' + r.cost.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '<span style="color:var(--text-hint)">—</span>'}</td>
         <td><button class="btn btn-ghost btn-sm recall-btn" data-serial="${esc(r.serial)}" data-product="${esc(r.product)}" data-location="${esc(r.location||'')}">🔧 Recall</button></td>
       </tr>`).join('');
 
@@ -1494,7 +1494,7 @@ Items will remain in Stock Holding with no customer attached.`)) return;
         <td style="font-size:11px;color:var(--text-hint);">${isReturned
           ? (r.returnedDate ? fmtDate(r.returnedDate) : '—') + (r.returnedTo ? `<br><span style="color:var(--text-muted)">${esc(r.returnedTo)}</span>` : '')
           : '<span style="color:var(--text-hint)">—</span>'}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '£' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '$' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
       </tr>`;
     }).join('');
 
@@ -1582,7 +1582,7 @@ Items will remain in Stock Holding with no customer attached.`)) return;
         <td style="font-size:11px;color:var(--text-hint);">${isWrittenOff
           ? (r.writtenOffDate ? fmtDate(r.writtenOffDate) : '—') + (r.writtenOffTo ? `<br><span style="color:var(--text-muted)">${esc(r.writtenOffTo)}</span>` : '')
           : '<span style="color:var(--text-hint)">—</span>'}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '£' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '$' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
       </tr>`;
     }).join('');
 
@@ -1635,7 +1635,7 @@ Items will remain in Stock Holding with no customer attached.`)) return;
         <td style="font-size:12px;">${esc(r.customer||'—')}</td>
         <td style="font-size:12px;color:var(--text-muted)">${esc(r.by||'—')}</td>
         <td style="font-size:11px;color:var(--text-hint)">${r.date ? fmtDate(r.date) : '—'}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '£' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${r.cost != null ? '$' + Number(r.cost).toFixed(2) : '<span style="color:var(--text-hint)">—</span>'}</td>
       </tr>`;
     }).join('');
 
