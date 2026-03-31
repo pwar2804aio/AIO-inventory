@@ -448,29 +448,81 @@ const UI = (() => {
     container.innerHTML = orders.map(o => {
       const totalQty = o.products.reduce((a, p) => a + p.qty, 0);
       const totalVal = o.products.reduce((a, p) => a + (p.qty * (p.unitCost || 0)), 0);
+      const hasTax   = (o.taxAmount || 0) > 0;
       const fmt$ = n => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+
+      // Expanded detail panel — full line-by-line breakdown with tax
+      const detailPanel = `<div class="ord-detail" id="ord-detail-${o.id}" style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:12px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:4px 8px;font-weight:600;color:var(--text-muted);font-size:11px;">Product</th>
+            <th style="text-align:right;padding:4px 8px;font-weight:600;color:var(--text-muted);font-size:11px;">Qty</th>
+            <th style="text-align:right;padding:4px 8px;font-weight:600;color:var(--text-muted);font-size:11px;">Unit cost</th>
+            <th style="text-align:right;padding:4px 8px;font-weight:600;color:var(--text-muted);font-size:11px;">Line total</th>
+            ${hasTax ? '<th style="text-align:right;padding:4px 8px;font-weight:600;color:#9c6000;font-size:11px;">Tax share</th><th style="text-align:right;padding:4px 8px;font-weight:600;color:#9c6000;font-size:11px;">Tax/unit</th><th style="text-align:right;padding:4px 8px;font-weight:600;color:var(--aio-purple);font-size:11px;">Landed/unit</th><th style="text-align:right;padding:4px 8px;font-weight:600;color:var(--aio-purple);font-size:11px;">Landed total</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${o.products.map(p => {
+              const lineTotal   = p.qty * (p.unitCost || 0);
+              const landedTotal = p.qty * (p.landedUnitCost || p.unitCost || 0);
+              return `<tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:6px 8px;font-weight:500">${esc(p.product)}</td>
+                <td style="padding:6px 8px;text-align:right">${p.qty}</td>
+                <td style="padding:6px 8px;text-align:right">${p.unitCost != null ? '$'+p.unitCost.toFixed(2) : '—'}</td>
+                <td style="padding:6px 8px;text-align:right">$${lineTotal.toFixed(2)}</td>
+                ${hasTax ? `
+                <td style="padding:6px 8px;text-align:right;color:#9c6000;">$${(p.taxShare||0).toFixed(2)}</td>
+                <td style="padding:6px 8px;text-align:right;color:#9c6000;">$${(p.taxPerUnit||0).toFixed(4)}</td>
+                <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--aio-purple);">$${(p.landedUnitCost||p.unitCost||0).toFixed(2)}</td>
+                <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--aio-purple);">$${landedTotal.toFixed(2)}</td>` : ''}
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--aio-purple-light);">
+              <td colspan="3" style="padding:8px;font-weight:700;font-size:12px;color:var(--text-muted);">Subtotal</td>
+              <td style="padding:8px;text-align:right;font-weight:700;">$${totalVal.toFixed(2)}</td>
+              ${hasTax ? `<td colspan="3" style="padding:8px;text-align:right;color:#9c6000;font-weight:700;">Tax ${fmt$(o.taxAmount)}${o.taxRate?' ('+o.taxRate+'%)':''}</td><td style="padding:8px;text-align:right;font-weight:700;color:var(--aio-purple);">$${(o.totalWithTax||totalVal).toFixed(2)}</td>` : ''}
+            </tr>
+            ${hasTax && o.taxRef ? `<tr><td colspan="8" style="padding:4px 8px;font-size:11px;color:var(--text-muted);">Tax ref: ${esc(o.taxRef)}</td></tr>` : ''}
+          </tfoot>
+        </table>
+      </div>`;
+
       return `<div class="shipment-card">
-        <div class="shipment-card-header">
-          <div>
+        <div class="shipment-card-header" style="cursor:pointer;" data-toggle-order="${o.id}">
+          <div style="flex:1;">
             <div class="shipment-card-title">
               ${esc(o.supplier)} <span class="po-lock-badge">🔒 ${esc(o.poNumber)}</span>
               <span class="badge ${statusClass[o.status] || 'b-low'}" style="margin-left:6px;font-size:10px;">${statusLabel[o.status] || o.status}</span>
+              ${hasTax ? '<span style="margin-left:8px;font-size:10px;background:#fff8e0;color:#9c6000;padding:2px 7px;border-radius:8px;border:1px solid #f0d880;font-weight:600;">💰 Tax</span>' : ''}
             </div>
             <div class="shipment-card-meta">
-              ${totalQty} unit${totalQty !== 1 ? 's' : ''} · ${o.products.length} product${o.products.length !== 1 ? 's' : ''} · Subtotal ${fmt$(totalVal)}${o.taxAmount > 0 ? ` · <span style="color:#9c6000;">Tax ${fmt$(o.taxAmount)}${o.taxRate ? ' (' + o.taxRate + '%)' : ''}${o.taxRef ? ' — ' + esc(o.taxRef) : ''}</span> · Total ${fmt$(o.totalWithTax || totalVal + o.taxAmount)}` : ''} · Ordered ${fmtDate(o.createdAt)}${o.expectedBy ? ' · Expected ' + new Date(o.expectedBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+              ${totalQty} unit${totalQty !== 1 ? 's' : ''} · ${o.products.length} product${o.products.length !== 1 ? 's' : ''} · Subtotal ${fmt$(totalVal)}${hasTax ? ` · <span style="color:#9c6000;">Tax ${fmt$(o.taxAmount)}${o.taxRate ? ' (' + o.taxRate + '%)' : ''}${o.taxRef ? ' — ' + esc(o.taxRef) : ''}</span> · <strong>Total ${fmt$(o.totalWithTax)}</strong>` : ''} · Ordered ${fmtDate(o.createdAt)}${o.expectedBy ? ' · Expected ' + new Date(o.expectedBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''} <span style="font-size:11px;color:var(--text-hint);">▼ click to expand</span>
             </div>
           </div>
-          <div class="shipment-actions">
+          <div class="shipment-actions" style="align-self:flex-start;">
             ${o.status === 'pending' ? `<button class="btn btn-success btn-xs" data-arrange-order="${o.id}">Arrange Shipment</button>
             <button class="btn btn-ghost btn-xs" data-cancel-order="${o.id}">Cancel</button>` : ''}
             ${o.status === 'in-transit' ? `<span style="font-size:11px;color:var(--text-muted);">Shipment registered</span>` : ''}
           </div>
         </div>
-        <div class="shipment-products">
-          ${o.products.map(p => `<span class="shipment-product-tag"><strong>${esc(p.product)}</strong> · ${p.qty} unit${p.qty !== 1 ? 's' : ''}${p.unitCost != null ? ' · $' + p.unitCost.toFixed(2) + '/unit' : ''}${p.taxPerUnit > 0 ? `<span style='color:#9c6000;'> +$${p.taxPerUnit.toFixed(4)} tax → $${p.landedUnitCost.toFixed(2)} landed</span>` : ''}</span>`).join('')}
-        </div>
+        ${detailPanel}
       </div>`;
     }).join('');
+
+    // Toggle expand on card header click
+    container.querySelectorAll('[data-toggle-order]').forEach(header => {
+      header.addEventListener('click', e => {
+        if (e.target.closest('button')) return; // don't toggle on button clicks
+        const detail = document.getElementById(`ord-detail-${header.dataset.toggleOrder}`);
+        if (!detail) return;
+        const isOpen = detail.style.display !== 'none';
+        detail.style.display = isOpen ? 'none' : '';
+        const arrow = header.querySelector('.shipment-card-meta span:last-child');
+        if (arrow) arrow.textContent = isOpen ? '▼ click to expand' : '▲ click to collapse';
+      });
+    });
 
     container.querySelectorAll('[data-arrange-order]').forEach(btn => {
       btn.addEventListener('click', () => {
