@@ -786,7 +786,7 @@ const Inventory = (() => {
     return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, getSerialKnownProduct, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
 
   function createOrder(opts) {
-    const { supplier, poNumber, expectedBy, products } = opts;
+    const { supplier, poNumber, expectedBy, products, taxRate, taxAmount, taxRef } = opts;
     if (!supplier) throw new Error('Manufacturer / Supplier is required.');
     if (!products || !products.length) throw new Error('At least one product is required.');
     products.forEach(p => {
@@ -797,11 +797,40 @@ const Inventory = (() => {
     const id = Date.now();
     const finalPO = poNumber || `PO-${new Date().getFullYear()}-${String(id).slice(-5)}`;
 
-    // Lock prices into the PO system at order time
+    // ── Tax calculation — split proportionally by line value ──────────
+    const subtotal = products.reduce((a, p) => a + (parseFloat(p.unitCost)||0) * (parseInt(p.qty)||0), 0);
+    // taxAmount overrides taxRate if both provided
+    const resolvedTaxAmount = taxAmount != null && taxAmount > 0
+      ? parseFloat(taxAmount)
+      : (taxRate != null && taxRate > 0 && subtotal > 0 ? subtotal * parseFloat(taxRate) / 100 : 0);
+    const resolvedTaxRate = taxRate != null && taxRate > 0 ? parseFloat(taxRate) : null;
+
+    // Split tax across product lines proportionally by line value
+    const productsWithTax = products.map(p => {
+      const lineValue = (parseFloat(p.unitCost)||0) * (parseInt(p.qty)||0);
+      const taxShare  = subtotal > 0 ? (lineValue / subtotal) * resolvedTaxAmount : 0;
+      const taxPerUnit = parseInt(p.qty) > 0 ? taxShare / parseInt(p.qty) : 0;
+      const landedUnitCost = (parseFloat(p.unitCost)||0) + taxPerUnit;
+      return {
+        product:       p.product,
+        category:      p.category || '',
+        qty:           parseInt(p.qty),
+        unitCost:      p.unitCost != null ? parseFloat(p.unitCost) : null,
+        taxShare:      parseFloat(taxShare.toFixed(4)),
+        taxPerUnit:    parseFloat(taxPerUnit.toFixed(4)),
+        landedUnitCost: parseFloat(landedUnitCost.toFixed(4)),
+      };
+    });
+
+    // Lock prices into the PO system — use landed cost (inc. tax) as the locked unit price
     DB.savePO(finalPO, {
       supplier,
       date: new Date().toISOString(),
-      lines: products.map(p => ({ product: p.product, unitCost: p.unitCost != null ? parseFloat(p.unitCost) : null })),
+      lines: productsWithTax.map(p => ({
+        product:  p.product,
+        unitCost: p.unitCost != null ? p.unitCost : null,
+        landedUnitCost: p.landedUnitCost,
+      })),
     });
 
     const order = {
@@ -809,14 +838,15 @@ const Inventory = (() => {
       supplier,
       poNumber: finalPO,
       expectedBy: expectedBy || '',
-      products: products.map(p => ({
-        product:  p.product,
-        category: p.category || '',
-        qty:      parseInt(p.qty),
-        unitCost: p.unitCost != null ? parseFloat(p.unitCost) : null,
-      })),
+      products: productsWithTax,
       status:    'pending',
       createdAt: new Date().toISOString(),
+      // Tax summary
+      subtotal:        parseFloat(subtotal.toFixed(2)),
+      taxAmount:       parseFloat(resolvedTaxAmount.toFixed(2)),
+      taxRate:         resolvedTaxRate,
+      taxRef:          taxRef || '',
+      totalWithTax:    parseFloat((subtotal + resolvedTaxAmount).toFixed(2)),
     };
 
     DB.addOrder(order);
