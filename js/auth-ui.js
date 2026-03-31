@@ -196,6 +196,28 @@ const AuthUI = (() => {
         return;
       }
 
+      // Ghost account restore flow
+      if (btn.dataset.restoreEmail) {
+        const restoreEmail = btn.dataset.restoreEmail;
+        if (!confirm(`Restore access for ${restoreEmail}?\n\nThis will:\n1. Pre-create their profile (${name || restoreEmail}, role: ${role})\n2. Send them a password reset email so they can log back in.`)) return;
+        btn.textContent = 'Restoring...'; btn.disabled = true;
+        try {
+          await UserManager.addPendingUser(restoreEmail, name || restoreEmail, role);
+          await UserManager.sendPasswordReset(restoreEmail);
+          delete btn.dataset.restoreEmail;
+          ['new-user-name','new-user-email','new-user-pass'].forEach(id => document.getElementById(id).value = '');
+          errEl.style.display = 'none';
+          await refreshUsersList();
+          btn.textContent = '✓ Reset email sent — profile ready';
+          setTimeout(() => { btn.textContent = 'Add user'; btn.disabled = false; }, 3000);
+        } catch(e) {
+          errEl.textContent = 'Error restoring: ' + (e.message || 'Unknown');
+          errEl.style.display = 'block';
+          btn.textContent = 'Restore access'; btn.disabled = false;
+        }
+        return;
+      }
+
       errEl.style.display = 'none';
       if (!name || !email || !pass) { errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return; }
       if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
@@ -211,21 +233,29 @@ const AuthUI = (() => {
         setTimeout(() => { btn.textContent = 'Add user'; btn.disabled = false; }, 2000);
       } catch(e) {
         if (e.code === 'auth/email-already-in-use') {
-          // Check if this is a soft-deleted user we can reactivate
           const allUsers = await UserManager.listUsers();
-          const deleted = allUsers.find(u => u.email === email && u.deleted);
-          if (deleted) {
+          const deleted  = allUsers.find(u => u.email === email && u.deleted);
+          const active   = allUsers.find(u => u.email === email && !u.deleted);
+          if (active) {
+            errEl.textContent = 'That email is already registered to an active user.';
+            errEl.style.display = 'block';
+            btn.textContent = 'Add user'; btn.disabled = false;
+          } else if (deleted) {
+            // Soft-deleted — offer reactivation
             errEl.innerHTML = `<strong>This user was previously removed.</strong><br>
               <span style="font-size:12px;">Would you like to reactivate <strong>${esc(deleted.name||email)}</strong>?</span>`;
             errEl.style.display = 'block';
-            // Swap button to reactivate
             btn.textContent = 'Reactivate user';
             btn.disabled = false;
             btn.dataset.reactivateUid = deleted.id;
           } else {
-            errEl.textContent = 'That email is already registered to an active user.';
+            // Ghost account — Firebase Auth exists but no Firestore doc (old hard-delete)
+            errEl.innerHTML = `<strong>This email has an existing account.</strong><br>
+              <span style="font-size:12px;">Their profile was previously removed. Click <strong>Restore access</strong> to send them a password reset and restore their profile with the name and role entered above.</span>`;
             errEl.style.display = 'block';
-            btn.textContent = 'Add user'; btn.disabled = false;
+            btn.textContent = 'Restore access';
+            btn.disabled = false;
+            btn.dataset.restoreEmail = email;
           }
         } else {
           errEl.textContent = 'Error: ' + (e.message || 'Could not add user');
