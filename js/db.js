@@ -11,7 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
-  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [], auditRecords: [] };
+  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [], auditRecords: [], pendingUsers: {} };
   let _db    = null;
   let _ready = false;
   let _onReadyCallbacks = [];
@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{} };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[] };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{} };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -195,8 +195,21 @@ const DB = (() => {
   function addAuditRecord(record)  { if(!_data.auditRecords) _data.auditRecords=[]; _data.auditRecords.push(record); _save(); }
   function getAuditRecords()       { return _data.auditRecords || []; }
 
+  // Pending users — ghost Firebase Auth accounts awaiting profile creation on next login
+  function setPendingUser(email, name, role) {
+    if (!_data.pendingUsers) _data.pendingUsers = {};
+    _data.pendingUsers[email.toLowerCase()] = { name, role, createdAt: new Date().toISOString() };
+    _save();
+  }
+  function getPendingUser(email) {
+    return (_data.pendingUsers || {})[email.toLowerCase()] || null;
+  }
+  function removePendingUser(email) {
+    if (_data.pendingUsers) { delete _data.pendingUsers[email.toLowerCase()]; _save(); }
+  }
+
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, setPendingUser, getPendingUser, removePendingUser, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
