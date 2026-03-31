@@ -290,9 +290,12 @@ const AuthUI = (() => {
               </select>`}
         </td>
         <td style="padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;">
-          ${u.id !== currentUid
-            ? `<button class="btn btn-ghost btn-xs" data-delete="${esc(u.id)}" data-name="${esc(u.name||u.email)}" style="color:var(--danger-text);border-color:var(--danger-border);">Remove</button>`
-            : ''}
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="btn btn-ghost btn-xs" data-reset-pass="${esc(u.email)}" style="font-size:11px;">Reset password</button>
+            ${u.id !== currentUid
+              ? `<button class="btn btn-ghost btn-xs" data-delete="${esc(u.id)}" data-name="${esc(u.name||u.email)}" style="color:var(--danger-text);border-color:var(--danger-border);">Remove</button>`
+              : ''}
+          </div>
         </td>
       </tr>`).join('');
 
