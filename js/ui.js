@@ -457,7 +457,7 @@ const UI = (() => {
               <span class="badge ${statusClass[o.status] || 'b-low'}" style="margin-left:6px;font-size:10px;">${statusLabel[o.status] || o.status}</span>
             </div>
             <div class="shipment-card-meta">
-              ${totalQty} unit${totalQty !== 1 ? 's' : ''} · ${o.products.length} product${o.products.length !== 1 ? 's' : ''} · Total value ${fmt$(totalVal)} · Ordered ${fmtDate(o.createdAt)}${o.expectedBy ? ' · Expected ' + new Date(o.expectedBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+              ${totalQty} unit${totalQty !== 1 ? 's' : ''} · ${o.products.length} product${o.products.length !== 1 ? 's' : ''} · Subtotal ${fmt$(totalVal)}${o.taxAmount > 0 ? ` · <span style="color:#9c6000;">Tax ${fmt$(o.taxAmount)}${o.taxRate ? ' (' + o.taxRate + '%)' : ''}${o.taxRef ? ' — ' + esc(o.taxRef) : ''}</span> · Total ${fmt$(o.totalWithTax || totalVal + o.taxAmount)}` : ''} · Ordered ${fmtDate(o.createdAt)}${o.expectedBy ? ' · Expected ' + new Date(o.expectedBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
             </div>
           </div>
           <div class="shipment-actions">
@@ -467,7 +467,7 @@ const UI = (() => {
           </div>
         </div>
         <div class="shipment-products">
-          ${o.products.map(p => `<span class="shipment-product-tag"><strong>${esc(p.product)}</strong> · ${p.qty} unit${p.qty !== 1 ? 's' : ''}${p.unitCost != null ? ' · $' + p.unitCost.toFixed(2) + '/unit' : ''}</span>`).join('')}
+          ${o.products.map(p => `<span class="shipment-product-tag"><strong>${esc(p.product)}</strong> · ${p.qty} unit${p.qty !== 1 ? 's' : ''}${p.unitCost != null ? ' · $' + p.unitCost.toFixed(2) + '/unit' : ''}${p.taxPerUnit > 0 ? `<span style='color:#9c6000;'> +$${p.taxPerUnit.toFixed(4)} tax → $${p.landedUnitCost.toFixed(2)} landed</span>` : ''}</span>`).join('')}
         </div>
       </div>`;
     }).join('');
