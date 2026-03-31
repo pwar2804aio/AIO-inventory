@@ -49,15 +49,18 @@ const Auth = (() => {
             await _so(_ga());
             return;
           } else {
-            // No profile — check DB pendingUsers (stored in inventory/main, no extra collection/rules needed)
-            const pending = typeof DB !== 'undefined' ? DB.getPendingUser(user.email) : null;
+            // No profile — wait for DB to be ready, then check pendingUsers
+            const pending = await new Promise(resolve => {
+              if (typeof DB === 'undefined') return resolve(null);
+              DB.onReady(() => resolve(DB.getPendingUser(user.email)));
+            });
             if (pending) {
               const profile = { name: pending.name, email: user.email, role: pending.role, createdAt: new Date().toISOString() };
               await _sd(_doc(db, 'users', user.uid), profile);
               if (typeof DB !== 'undefined') DB.removePendingUser(user.email);
               _userProfile = profile;
             } else {
-              // Truly first login with no pre-created profile
+              // Truly first login with no pre-created profile — default view only
               _userProfile = { name: user.email, email: user.email, role: 'view' };
             }
           }
