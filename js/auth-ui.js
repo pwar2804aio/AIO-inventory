@@ -23,6 +23,9 @@ const AuthUI = (() => {
             <input class="fi" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
           </div>
           <button class="btn btn-orange login-btn" id="login-btn">Sign in</button>
+          <div style="margin-top:12px;text-align:center;">
+            <button id="btn-forgot-password" style="background:none;border:none;color:var(--aio-purple,#6e3fc8);font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Forgot password?</button>
+          </div>
           <div class="login-footer">AIO App Inventory · Authorised users only</div>
         </div>
       </div>`;
@@ -60,6 +63,37 @@ const AuthUI = (() => {
 
     document.getElementById('login-btn').addEventListener('click', doLogin);
     document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+    document.getElementById('btn-forgot-password').addEventListener('click', async () => {
+      const email = document.getElementById('login-email').value.trim();
+      const btn   = document.getElementById('btn-forgot-password');
+      if (!email) {
+        showError('Enter your email address above, then click Forgot password.');
+        return;
+      }
+      btn.textContent = 'Sending...';
+      btn.disabled = true;
+      try {
+        const { getAuth, sendPasswordResetEmail } =
+          await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        await sendPasswordResetEmail(getAuth(), email);
+        btn.textContent = '✓ Reset email sent — check your inbox';
+        btn.style.color = '#1a7a3c';
+        // Clear any error
+        const errEl = document.getElementById('login-error');
+        if (errEl) errEl.style.display = 'none';
+      } catch(e) {
+        btn.textContent = 'Forgot password?';
+        btn.disabled = false;
+        const msg = e.code === 'auth/user-not-found'
+          ? 'No account found with that email.'
+          : e.code === 'auth/invalid-email'
+          ? 'Please enter a valid email address.'
+          : 'Could not send reset email. Please try again.';
+        showError(msg);
+      }
+    });
+
     setTimeout(() => document.getElementById('login-email')?.focus(), 100);
   }
 
