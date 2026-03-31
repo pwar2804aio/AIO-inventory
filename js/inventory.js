@@ -623,6 +623,82 @@ const Inventory = (() => {
   }
 
   // ── Recall deployed serial back to stock for servicing ─────────────
+  // ── Pending Deployment ───────────────────────────────────────────────
+  function stagePendingDeployment(opts) {
+    const { customer, by, ref, serials } = opts;
+    if (!customer) throw new Error('Customer / account is required.');
+    if (!serials || serials.length === 0) throw new Error('Add at least one serial number.');
+
+    // Block if already deployed
+    const deployedSet = new Set(getDeployedSerialRows().map(r => r.serial.toUpperCase()));
+    const alreadyDeployed = serials.filter(s => deployedSet.has(s.toUpperCase()));
+    if (alreadyDeployed.length > 0)
+      throw new Error('Already in Stock Deployed: ' + alreadyDeployed.join(', '));
+
+    // Block if already pending deployment
+    const pendingSerials = new Set(
+      DB.getPendingDeployments().flatMap(p => p.serials.map(s => s.toUpperCase()))
+    );
+    const alreadyPending = serials.filter(s => pendingSerials.has(s.toUpperCase()));
+    if (alreadyPending.length > 0)
+      throw new Error('Already staged for deployment: ' + alreadyPending.join(', '));
+
+    // Must be in stock
+    const avail = getAvailableSerials();
+    const notInStock = serials.filter(s => !avail.has(s.toUpperCase()));
+    if (notInStock.length > 0)
+      throw new Error('Not in Stock Holding: ' + notInStock.join(', '));
+
+    // Resolve product/category/location per serial from inventory map
+    const map = getInventoryMap();
+    const groups = {};
+    serials.forEach(s => {
+      Object.values(map).forEach(v => {
+        if (v.inStock.has(s)) {
+          const k = v.product + '||' + v.location;
+          if (!groups[k]) groups[k] = { product: v.product, location: v.location, category: v.category, serials: [] };
+          groups[k].serials.push(s);
+        }
+      });
+    });
+
+    const now = Date.now();
+    Object.values(groups).forEach((g, i) => {
+      DB.addPendingDeployment({
+        id: now + i,
+        product: g.product, category: g.category, location: g.location,
+        customer, by: by || '', ref: ref || '',
+        serials: g.serials,
+        stagedAt: new Date().toISOString(),
+      });
+    });
+  }
+
+  function confirmDeployment(pendingId) {
+    const pd = DB.getPendingDeployments().find(p => p.id === pendingId);
+    if (!pd) throw new Error('Pending deployment not found.');
+
+    // Create the real OUT movement
+    DB.addMovement({
+      id: Date.now(),
+      type: 'OUT',
+      product: pd.product, category: pd.category, location: pd.location,
+      customer: pd.customer, by: pd.by || '', ref: pd.ref || '',
+      serials: pd.serials,
+      date: new Date().toISOString(),
+    });
+
+    // Remove from pending
+    DB.removePendingDeployment(pendingId);
+  }
+
+  function getPendingDeploymentSerials() {
+    // Returns a Set of serial.toUpperCase() that are staged for deployment
+    return new Set(
+      DB.getPendingDeployments().flatMap(p => p.serials.map(s => s.toUpperCase()))
+    );
+  }
+
   function recallToServicing(serial, location, condition, recalledBy) {
     const s = serial.trim().toUpperCase();
     if (!s)        throw new Error('Serial number is required.');
@@ -659,7 +735,7 @@ const Inventory = (() => {
   }
 
     DB.onReady(() => refreshProducts());
-    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
 
   function createOrder(opts) {
     const { supplier, poNumber, expectedBy, products } = opts;
