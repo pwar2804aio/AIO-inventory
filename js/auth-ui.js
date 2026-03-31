@@ -173,12 +173,33 @@ const AuthUI = (() => {
       const pass  = document.getElementById('new-user-pass').value;
       const role  = document.getElementById('new-user-role').value;
       const errEl = document.getElementById('add-user-error');
-      errEl.style.display = 'none';
+      const btn   = document.getElementById('btn-add-user-confirm');
 
+      // Reactivation mode — button was switched after email-already-in-use on a deleted user
+      if (btn.dataset.reactivateUid) {
+        if (!confirm(`Reactivate this user with the name "${name}" and role "${role}"?\n\nA password reset email will be sent to ${email} so they can set their own password.`)) return;
+        btn.textContent = 'Reactivating...'; btn.disabled = true;
+        try {
+          await UserManager.reactivateUser(btn.dataset.reactivateUid, name || email, role);
+          await UserManager.sendPasswordReset(email);
+          delete btn.dataset.reactivateUid;
+          ['new-user-name','new-user-email','new-user-pass'].forEach(id => document.getElementById(id).value = '');
+          errEl.style.display = 'none';
+          await refreshUsersList();
+          btn.textContent = '✓ Reactivated — reset email sent';
+          setTimeout(() => { btn.textContent = 'Add user'; btn.disabled = false; }, 3000);
+        } catch(e) {
+          errEl.textContent = 'Error reactivating: ' + (e.message || 'Unknown error');
+          errEl.style.display = 'block';
+          btn.textContent = 'Reactivate user'; btn.disabled = false;
+        }
+        return;
+      }
+
+      errEl.style.display = 'none';
       if (!name || !email || !pass) { errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return; }
       if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
 
-      const btn = document.getElementById('btn-add-user-confirm');
       btn.textContent = 'Adding...'; btn.disabled = true;
 
       try {
@@ -189,11 +210,28 @@ const AuthUI = (() => {
         btn.textContent = '✓ User added';
         setTimeout(() => { btn.textContent = 'Add user'; btn.disabled = false; }, 2000);
       } catch(e) {
-        errEl.textContent = e.code === 'auth/email-already-in-use'
-          ? 'That email is already registered.'
-          : 'Error: ' + (e.message || 'Could not add user');
-        errEl.style.display = 'block';
-        btn.textContent = 'Add user'; btn.disabled = false;
+        if (e.code === 'auth/email-already-in-use') {
+          // Check if this is a soft-deleted user we can reactivate
+          const allUsers = await UserManager.listUsers();
+          const deleted = allUsers.find(u => u.email === email && u.deleted);
+          if (deleted) {
+            errEl.innerHTML = `<strong>This user was previously removed.</strong><br>
+              <span style="font-size:12px;">Would you like to reactivate <strong>${esc(deleted.name||email)}</strong>?</span>`;
+            errEl.style.display = 'block';
+            // Swap button to reactivate
+            btn.textContent = 'Reactivate user';
+            btn.disabled = false;
+            btn.dataset.reactivateUid = deleted.id;
+          } else {
+            errEl.textContent = 'That email is already registered to an active user.';
+            errEl.style.display = 'block';
+            btn.textContent = 'Add user'; btn.disabled = false;
+          }
+        } else {
+          errEl.textContent = 'Error: ' + (e.message || 'Could not add user');
+          errEl.style.display = 'block';
+          btn.textContent = 'Add user'; btn.disabled = false;
+        }
       }
     });
   }
@@ -202,38 +240,52 @@ const AuthUI = (() => {
     const container = document.getElementById('users-list');
     if (!container) return;
     try {
-      const users = await UserManager.listUsers();
+      const allUsers   = await UserManager.listUsers();
+      const active     = allUsers.filter(u => !u.deleted);
+      const removed    = allUsers.filter(u =>  u.deleted);
       const currentUid = Auth.getUser()?.uid;
-      const roleLabel = { admin: 'Admin', edit: 'Editor', view: 'View only' };
+      const roleLabel  = { admin: 'Admin', edit: 'Editor', view: 'View only' };
       const roleColour = { admin: 'var(--aio-purple)', edit: 'var(--success-text)', view: 'var(--text-hint)' };
+
+      const th = (t) => `<th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;border-bottom:1px solid var(--border);">${t}</th>`;
+
+      const activeRows = active.map(u => `<tr>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-weight:500;">${esc(u.name || '—')}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px;">${esc(u.email)}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);">
+          ${u.id === currentUid
+            ? `<span style="font-size:11px;color:${roleColour[u.role]};font-weight:600;">${roleLabel[u.role] || u.role} (you)</span>`
+            : `<select class="fi" data-uid="${esc(u.id)}" style="width:110px;padding:4px 6px;font-size:12px;">
+                ${['view','edit','admin'].map(r => `<option value="${r}"${u.role===r?' selected':''}>${roleLabel[r]}</option>`).join('')}
+              </select>`}
+        </td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;">
+          ${u.id !== currentUid
+            ? `<button class="btn btn-ghost btn-xs" data-delete="${esc(u.id)}" data-name="${esc(u.name||u.email)}" style="color:var(--danger-text);border-color:var(--danger-border);">Remove</button>`
+            : ''}
+        </td>
+      </tr>`).join('');
+
+      const removedRows = removed.length ? removed.map(u => `<tr style="opacity:.65;">
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-weight:500;">${esc(u.name || '—')}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px;">${esc(u.email)}</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-hint);">Removed</td>
+        <td style="padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;display:flex;gap:6px;justify-content:flex-end;">
+          <button class="btn btn-ghost btn-xs" data-reactivate="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${esc(u.name||u.email)}">Reactivate</button>
+          <button class="btn btn-ghost btn-xs" data-reset-pass="${esc(u.email)}" style="font-size:11px;">Reset password</button>
+        </td>
+      </tr>`).join('') : '';
 
       container.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead><tr>
-            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;border-bottom:1px solid var(--border);">Name</th>
-            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;border-bottom:1px solid var(--border);">Email</th>
-            <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;border-bottom:1px solid var(--border);">Role</th>
-            <th style="border-bottom:1px solid var(--border);"></th>
-          </tr></thead>
-          <tbody>
-            ${users.map(u => `<tr>
-              <td style="padding:9px 8px;border-bottom:1px solid var(--border);font-weight:500;">${esc(u.name || '—')}</td>
-              <td style="padding:9px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px;">${esc(u.email)}</td>
-              <td style="padding:9px 8px;border-bottom:1px solid var(--border);">
-                ${u.id === currentUid
-                  ? `<span style="font-size:11px;color:${roleColour[u.role]};font-weight:600;">${roleLabel[u.role] || u.role} (you)</span>`
-                  : `<select class="fi" data-uid="${esc(u.id)}" style="width:110px;padding:4px 6px;font-size:12px;">
-                      ${['view','edit','admin'].map(r => `<option value="${r}"${u.role===r?' selected':''}>${roleLabel[r]}</option>`).join('')}
-                    </select>`}
-              </td>
-              <td style="padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;">
-                ${u.id !== currentUid
-                  ? `<button class="btn btn-ghost btn-xs" data-delete="${esc(u.id)}" data-name="${esc(u.name||u.email)}" style="color:var(--danger-text);border-color:var(--danger-border);">Remove</button>`
-                  : ''}
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`;
+          <thead><tr>${th('Name')}${th('Email')}${th('Role')}<th style="border-bottom:1px solid var(--border);"></th></tr></thead>
+          <tbody>${activeRows}</tbody>
+        </table>
+        ${removed.length ? `
+          <div style="margin-top:14px;margin-bottom:6px;font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;letter-spacing:.06em;">Removed users</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tbody>${removedRows}</tbody>
+          </table>` : ''}`;
 
       // Wire role change dropdowns
       container.querySelectorAll('select[data-uid]').forEach(sel => {
@@ -242,12 +294,43 @@ const AuthUI = (() => {
         });
       });
 
-      // Wire delete buttons
+      // Wire remove buttons
       container.querySelectorAll('button[data-delete]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm(`Remove ${btn.dataset.name}? They will lose access.`)) return;
+          if (!confirm(`Remove ${btn.dataset.name}?\n\nThey will lose access immediately. You can reactivate them later from the Removed users section.`)) return;
+          btn.textContent = 'Removing...'; btn.disabled = true;
           await UserManager.deleteUser(btn.dataset.delete);
           await refreshUsersList();
+        });
+      });
+
+      // Wire reactivate buttons
+      container.querySelectorAll('button[data-reactivate]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const role = prompt(`Reactivate ${btn.dataset.name} (${btn.dataset.email})\nEnter their role: admin / edit / view`, 'edit');
+          if (!role || !['admin','edit','view'].includes(role)) return;
+          if (!confirm(`Reactivate ${btn.dataset.name} as ${role}?\n\nA password reset email will be sent to ${btn.dataset.email}.`)) return;
+          btn.textContent = 'Reactivating...'; btn.disabled = true;
+          try {
+            await UserManager.reactivateUser(btn.dataset.reactivate, btn.dataset.name, role);
+            await UserManager.sendPasswordReset(btn.dataset.email);
+            await refreshUsersList();
+          } catch(e) {
+            alert('Error reactivating: ' + (e.message || 'Unknown'));
+            btn.textContent = 'Reactivate'; btn.disabled = false;
+          }
+        });
+      });
+
+      // Wire reset password buttons
+      container.querySelectorAll('button[data-reset-pass]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`Send a password reset email to ${btn.dataset.resetPass}?`)) return;
+          try {
+            await UserManager.sendPasswordReset(btn.dataset.resetPass);
+            btn.textContent = '✓ Email sent'; btn.disabled = true;
+            setTimeout(() => { btn.textContent = 'Reset password'; btn.disabled = false; }, 3000);
+          } catch(e) { alert('Error: ' + e.message); }
         });
       });
 
