@@ -949,7 +949,38 @@
       });
     });
     const invalid = row.serials.filter(s => !avail.has(s)).length;
-    if (countEl) countEl.textContent = row.serials.length + ' serial' + (row.serials.length!==1?'s':'') + (invalid ? ` — ${invalid} not in stock` : '');
+
+    // Product mismatch warning — serial belongs to a different product
+    let mismatchMsg = '';
+    if (row.product) {
+      const mismatched = row.serials.filter(s => {
+        if (s.toUpperCase().startsWith('NS-')) return false;
+        const known = Inventory.getSerialKnownProduct ? Inventory.getSerialKnownProduct(s) : null;
+        return known && known !== row.product;
+      });
+      if (mismatched.length > 0) {
+        const known = Inventory.getSerialKnownProduct(mismatched[0]);
+        mismatchMsg = ` ⚠ ${mismatched.length} serial${mismatched.length!==1?'s':''} belong to "${known}", not "${row.product}"`;
+      }
+    }
+
+    if (countEl) {
+      countEl.textContent = row.serials.length + ' serial' + (row.serials.length!==1?'s':'') + (invalid ? ` — ${invalid} not in stock` : '') + mismatchMsg;
+      countEl.style.color = mismatchMsg ? '#c0392b' : '';
+    }
+
+    // Also highlight mismatched serial tags in red
+    c.querySelectorAll('.stag-out').forEach(tag => {
+      const serial = tag.childNodes[0]?.textContent;
+      if (serial && row.product) {
+        const known = Inventory.getSerialKnownProduct ? Inventory.getSerialKnownProduct(serial) : null;
+        if (known && known !== row.product) {
+          tag.classList.remove('stag-out');
+          tag.classList.add('stag-err');
+          tag.title = `Belongs to: ${known}`;
+        }
+      }
+    });
   }
 
   function clearStockOut() {
