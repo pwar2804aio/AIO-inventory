@@ -232,6 +232,25 @@ const Reports = (() => {
   }
 
   // ── Main render ───────────────────────────────────────────────────────
+  /** Tax paid by supplier & period */
+  function buildTaxReport(from, to) {
+    const orders = DB.getOrders().filter(o => (o.taxAmount||0) > 0 && inRange(o.createdAt, from, to));
+    const bySupplier = {};
+    orders.forEach(o => {
+      if (!bySupplier[o.supplier]) bySupplier[o.supplier] = { supplier: o.supplier, orders: 0, subtotal: 0, taxAmount: 0, total: 0 };
+      bySupplier[o.supplier].orders++;
+      bySupplier[o.supplier].subtotal  += o.subtotal    || 0;
+      bySupplier[o.supplier].taxAmount += o.taxAmount   || 0;
+      bySupplier[o.supplier].total     += o.totalWithTax || 0;
+    });
+    return {
+      orders,
+      bySupplier: Object.values(bySupplier).sort((a,b) => b.taxAmount - a.taxAmount),
+      totalTax:   orders.reduce((a,o) => a + (o.taxAmount||0), 0),
+      totalPaid:  orders.reduce((a,o) => a + (o.totalWithTax||0), 0),
+    };
+  }
+
   function render() {
     const from = document.getElementById('rpt-date-from').value;
     const to   = document.getElementById('rpt-date-to').value;
@@ -242,7 +261,9 @@ const Reports = (() => {
     const lowStock   = buildLowStock();
     const byCustomer = buildDeployedByCustomer(from, to);
     const byLocation = buildHoldingByLocation(from, to);
+    const taxReport  = buildTaxReport(from, to);
 
+    renderTaxSection(taxReport);
     const AIO_PURPLE  = '#5F68BC';
     const AIO_ORANGE  = '#F4733B';
     const AIO_GREEN   = '#3b6d11';
@@ -436,6 +457,76 @@ const Reports = (() => {
     a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
     a.download = `aio_report_${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  // Render tax section
+  function renderTaxSection(taxReport) {
+    const taxEl = document.getElementById('rpt-tax-section');
+    if (!taxEl) return;
+    if (!taxReport.orders.length) {
+      taxEl.innerHTML = '<div class="empty" style="padding:1rem">No tax recorded on purchase orders in this period</div>';
+      return;
+    }
+    taxEl.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="svc-stat-card" style="background:#fff8e0;border-color:#f0d880;color:#7a5000;flex:1;min-width:120px;">
+          <div class="svc-stat-count">${taxReport.orders.length}</div>
+          <div class="svc-stat-label">POs with tax</div>
+        </div>
+        <div class="svc-stat-card" style="background:#fff8e0;border-color:#f0d880;color:#7a5000;flex:1;min-width:120px;">
+          <div class="svc-stat-count">${fmt$(taxReport.totalTax)}</div>
+          <div class="svc-stat-label">Total tax paid</div>
+        </div>
+        <div class="svc-stat-card" style="background:#eaf7ee;border-color:#b8e0c4;color:#1a6b38;flex:1;min-width:120px;">
+          <div class="svc-stat-count">${fmt$(taxReport.totalPaid)}</div>
+          <div class="svc-stat-label">Total inc. tax</div>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">By supplier</div>
+        <table class="product-stock-table">
+          <thead><tr>
+            <th style="width:28%">Supplier</th><th style="width:8%">POs</th>
+            <th style="width:18%">Subtotal</th><th style="width:18%">Tax paid</th>
+            <th style="width:18%">Total inc. tax</th><th style="width:10%">Eff. rate</th>
+          </tr></thead>
+          <tbody>${taxReport.bySupplier.map(s => `<tr>
+            <td style="font-weight:500">${esc(s.supplier)}</td>
+            <td>${s.orders}</td>
+            <td>${fmt$(s.subtotal)}</td>
+            <td style="color:#9c6000;font-weight:600">${fmt$(s.taxAmount)}</td>
+            <td style="color:var(--aio-purple);font-weight:600">${fmt$(s.total)}</td>
+            <td style="color:var(--text-muted)">${s.subtotal > 0 ? (s.taxAmount/s.subtotal*100).toFixed(2)+'%' : '—'}</td>
+          </tr>`).join('')}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--aio-purple-light);">
+            <td colspan="2" style="font-weight:700;padding-top:8px;">Total</td>
+            <td style="padding-top:8px;font-weight:700">${fmt$(taxReport.orders.reduce((a,o)=>a+(o.subtotal||0),0))}</td>
+            <td style="padding-top:8px;font-weight:700;color:#9c6000">${fmt$(taxReport.totalTax)}</td>
+            <td style="padding-top:8px;font-weight:700;color:var(--aio-purple)">${fmt$(taxReport.totalPaid)}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Individual POs</div>
+        <table class="product-stock-table">
+          <thead><tr>
+            <th style="width:12%">Date</th><th style="width:16%">PO</th><th style="width:18%">Supplier</th>
+            <th style="width:13%">Subtotal</th><th style="width:11%">Tax</th><th style="width:8%">Rate</th>
+            <th style="width:12%">Tax ref</th><th style="width:10%">Total</th>
+          </tr></thead>
+          <tbody>${taxReport.orders.slice().reverse().map(o => `<tr>
+            <td style="color:var(--text-muted);font-size:12px">${fmtDate(o.createdAt)}</td>
+            <td><span class="po-lock-badge">🔒 ${esc(o.poNumber)}</span></td>
+            <td style="font-weight:500">${esc(o.supplier)}</td>
+            <td>${fmt$(o.subtotal)}</td>
+            <td style="color:#9c6000;font-weight:600">${fmt$(o.taxAmount)}</td>
+            <td style="color:var(--text-muted)">${o.taxRate ? o.taxRate+'%' : '—'}</td>
+            <td style="font-size:11px;color:var(--text-muted)">${esc(o.taxRef||'—')}</td>
+            <td style="font-weight:700;color:var(--aio-purple)">${fmt$(o.totalWithTax)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
   }
 
   return { render, exportAll };
