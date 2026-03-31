@@ -80,7 +80,14 @@ const DB = (() => {
   function setSerialCost(s,c)    { _data.serialCosts[s.toUpperCase()]=c; _save(); }
   function getSerialCost(s)      { return _data.serialCosts[s.toUpperCase()]??null; }
   function setProductCost(name,cost,map) {
+    // Update in-stock serials via inventory map
     Object.values(map).forEach(v => { if(v.product===name) v.inStock.forEach(s=>{_data.serialCosts[s.toUpperCase()]=cost;}); });
+    // Also update deployed serials so cost stays consistent across all views
+    _data.movements.forEach(mv => {
+      if (mv.type === 'OUT' && mv.product === name) {
+        mv.serials.forEach(s => { _data.serialCosts[s.toUpperCase()] = cost; });
+      }
+    });
     _save();
   }
 
