@@ -517,8 +517,15 @@ const Inventory = (() => {
   }
 
   // ── Stock Out ─────────────────────────────────────────────────────────
+  // Returns the known product for a serial based on its first IN movement
+  function getSerialKnownProduct(serial) {
+    const s = serial.toUpperCase();
+    const firstIn = DB.getData().movements.find(m => m.type === 'IN' && m.serials.some(x => x.toUpperCase() === s));
+    return firstIn ? firstIn.product : null;
+  }
+
   function stockOut(opts) {
-    const { customer, by, ref, serials } = opts;
+    const { customer, by, ref, serials, product: expectedProduct } = opts;
     if (!customer) throw new Error('Customer / account is required.');
     if (!serials || serials.length === 0) throw new Error('Add at least one serial number.');
 
@@ -537,6 +544,31 @@ const Inventory = (() => {
     const notInStock = serials.filter(s => !avail.has(s.toUpperCase()));
     if (notInStock.length > 0) {
       throw new Error('Serials not in Stock Holding: ' + notInStock.join(', '));
+    }
+
+    // ── Product mismatch check ──────────────────────────────────────────
+    // Each serial has a known product from its first IN movement.
+    // Block dispatch if the user is trying to book it out against a different product.
+    // NS- serials (no serial number items) are exempt — they share product by quantity.
+    const mismatches = serials.filter(s => !s.toUpperCase().startsWith('NS-')).map(s => {
+      const knownProduct = getSerialKnownProduct(s);
+      // Find what product this serial is currently filed under in stock
+      const currentProduct = (() => {
+        const map = getInventoryMap();
+        for (const v of Object.values(map)) {
+          if (v.inStock.has(s)) return v.product;
+        }
+        return null;
+      })();
+      if (currentProduct && expectedProduct && currentProduct !== expectedProduct) {
+        return { serial: s, knownProduct: currentProduct, requestedProduct: expectedProduct };
+      }
+      return null;
+    }).filter(Boolean);
+
+    if (mismatches.length > 0) {
+      const detail = mismatches.map(m => `${m.serial} is ${m.knownProduct}, not ${m.requestedProduct}`).join('; ');
+      throw new Error(`Product mismatch — serial numbers belong to a different product: ${detail}`);
     }
 
     const map = getInventoryMap();
@@ -649,6 +681,22 @@ const Inventory = (() => {
     if (notInStock.length > 0)
       throw new Error('Not in Stock Holding: ' + notInStock.join(', '));
 
+    // ── Product mismatch check (same as stockOut) ───────────────────────
+    const stageMismatches = serials.filter(s => !s.toUpperCase().startsWith('NS-')).map(s => {
+      const map = getInventoryMap();
+      let currentProduct = null;
+      for (const v of Object.values(map)) { if (v.inStock.has(s)) { currentProduct = v.product; break; } }
+      return currentProduct ? { serial: s, currentProduct } : null;
+    }).filter(Boolean).filter(({ serial, currentProduct }) => {
+      // Check against any product explicitly passed, or against first-ever IN movement
+      const knownProduct = getSerialKnownProduct(serial);
+      return knownProduct && currentProduct !== knownProduct;
+    });
+    if (stageMismatches.length > 0) {
+      const detail = stageMismatches.map(m => `${m.serial} belongs to ${m.currentProduct}`).join('; ');
+      throw new Error(`Product mismatch: ${detail}`);
+    }
+
     // Resolve product/category/location per serial from inventory map
     const map = getInventoryMap();
     const groups = {};
@@ -735,7 +783,7 @@ const Inventory = (() => {
   }
 
     DB.onReady(() => refreshProducts());
-    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, getSerialKnownProduct, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
 
   function createOrder(opts) {
     const { supplier, poNumber, expectedBy, products } = opts;
