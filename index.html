@@ -150,6 +150,15 @@
       .audit-badge-missing    { background:#3a3000; color:#f0c840; }
       .audit-badge-unexpected { background:#3a1000; color:#f08060; }
     }
+    /* ── Pending Deployment ─────────────────────────────────────────── */
+    .badge-pending-deploy { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; background:#fff3cd; color:#856404; border:1px solid #ffc107; letter-spacing:.3px; }
+    .dep-pending-group { border:1.5px solid #ffc107; border-radius:10px; padding:12px 16px; margin-bottom:10px; background:#fffdf0; }
+    .dep-pending-group-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+    .dep-pending-group-title { font-weight:600; font-size:14px; }
+    @media (prefers-color-scheme: dark) {
+      .badge-pending-deploy { background:#3a2e00; color:#ffd54f; border-color:#856404; }
+      .dep-pending-group { border-color:#856404; background:#1e1900; }
+    }
   </style>
 </head>
 <body>
@@ -207,7 +216,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v65</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v66</span>
     </nav>
   </header>
 
@@ -581,11 +590,25 @@
   <!-- STOCK OUT -->
   <section id="v-out" class="view" style="display:none;">
     <div class="panel-toolbar">
-      <span class="toolbar-title">Dispatch stock</span>
+      <span class="toolbar-title" id="out-toolbar-title">Dispatch stock</span>
       <button class="btn btn-danger" id="btn-submit-out">Dispatch all</button>
     </div>
     <div class="panel" style="margin-bottom:1rem;">
-      <div class="panel-title">Dispatch details</div>
+      <!-- Dispatch mode toggle -->
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-hover,rgba(0,0,0,.03));border-radius:8px;margin-bottom:16px;border:1.5px solid var(--border);">
+        <span style="font-size:13px;font-weight:600;color:var(--text-muted);">Mode:</span>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;">
+          <input type="radio" name="out-mode" id="out-mode-stage" value="stage" checked />
+          <span>📋 Stage for deployment</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— item stays in stock holding, tagged to customer</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;">
+          <input type="radio" name="out-mode" id="out-mode-dispatch" value="dispatch" />
+          <span>🚚 Dispatch now</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— immediately moves to Stock Deployed</span>
+        </label>
+      </div>
+      <div class="panel-title" id="out-panel-title" style="margin-bottom:12px;">Stage for deployment — attach to customer</div>
       <div class="form-grid g3">
         <div class="form-group">
           <label class="form-label" for="out-customer">Customer / Account *</label>
@@ -593,7 +616,7 @@
           <datalist id="customer-list"></datalist>
         </div>
         <div class="form-group">
-          <label class="form-label" for="out-by">Dispatched by</label>
+          <label class="form-label" for="out-by" id="out-by-label">Staged by</label>
           <input class="fi" id="out-by" placeholder="e.g. Peter Roberts" />
         </div>
         <div class="form-group">
@@ -682,9 +705,22 @@
 
   <!-- STOCK DEPLOYED -->
   <section id="v-deployed" class="view" style="display:none;">
+
+    <!-- Pending Deployment panel -->
+    <div class="panel" id="dep-pending-panel" style="margin-bottom:1rem;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div>
+          <div class="panel-title" style="margin:0;">📋 Pending Deployment</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Items staged for deployment — still in Stock Holding. Confirm to deploy and remove from stock.</div>
+        </div>
+      </div>
+      <div id="dep-pending-body"></div>
+    </div>
+
+    <!-- Deployed panel -->
     <div class="panel">
       <div class="panel-title">
-        Stock deployed — units dispatched to customers
+        🚚 Deployed — units dispatched to customers
         <button class="btn btn-ghost btn-sm" id="btn-export-deployed">Export CSV</button>
       </div>
       <div class="search-bar">
@@ -988,14 +1024,14 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=65"></script>
-<script src="js/auth-ui.js?v=65"></script>
-<script src="js/scanner.js?v=65"></script>
-<script src="js/db.js?v=65"></script>
-<script src="js/inventory.js?v=65"></script>
-<script src="js/reports.js?v=65"></script>
-<script src="js/ui.js?v=65"></script>
-<script src="js/audit.js?v=65"></script>
-<script src="js/app.js?v=65"></script>
+<script src="js/auth.js?v=66"></script>
+<script src="js/auth-ui.js?v=66"></script>
+<script src="js/scanner.js?v=66"></script>
+<script src="js/db.js?v=66"></script>
+<script src="js/inventory.js?v=66"></script>
+<script src="js/reports.js?v=66"></script>
+<script src="js/ui.js?v=66"></script>
+<script src="js/audit.js?v=66"></script>
+<script src="js/app.js?v=66"></script>
 </body>
 </html>
