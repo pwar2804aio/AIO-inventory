@@ -132,8 +132,6 @@ const Audit = (() => {
 
     const pauseBtn = document.getElementById('btn-pause-audit');
     if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
-    const pauseBtn = document.getElementById('btn-pause-audit');
-    if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
     if (input) input.focus();
   }
 
