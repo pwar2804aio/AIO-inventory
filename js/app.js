@@ -557,7 +557,7 @@
     overlay.className = 'modal-overlay';
     const knownLocations = Inventory.getLocations();
     const locationOpts   = knownLocations.map(l => `<option value="${l}">${l}</option>`).join('');
-    const totalOrderValue = order.products.reduce((a, p) => a + p.qty * (p.unitCost || 0), 0);
+    const totalOrderValue = order.products.reduce((a, p) => a + p.qty * (p.landedUnitCost || p.unitCost || 0), 0);
     const totalUnits      = order.products.reduce((a, p) => a + p.qty, 0);
 
     overlay.innerHTML = `
@@ -565,7 +565,7 @@
         <div class="modal-title">Register shipment</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">
           ${totalUnits} units &middot; ${esc(order.supplier)} &middot; PO ${esc(order.poNumber)}
-          &middot; Order value $${totalOrderValue.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          &middot; Order value $${totalOrderValue.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}${(order.taxAmount||0)>0 ? ` (inc. tax $${order.taxAmount.toFixed(2)})` : ''}
         </div>
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:8px;">Destination</div>
         <div class="form-grid g2" style="margin-bottom:12px;">
@@ -637,16 +637,17 @@
       if (freightCost <= 0 || totalOrderValue <= 0) { preview.style.display = 'none'; return; }
       preview.style.display = 'block';
       tbody.innerHTML = order.products.map(p => {
-        const lineValue      = p.qty * (p.unitCost || 0);
+        const baseCost       = p.landedUnitCost || p.unitCost || 0; // includes tax/unit
+        const lineValue      = p.qty * baseCost;
         const freightShare   = (lineValue / totalOrderValue) * freightCost;
         const freightPerUnit = p.qty > 0 ? freightShare / p.qty : 0;
-        const landedPerUnit  = (p.unitCost || 0) + freightPerUnit;
+        const finalLanded    = baseCost + freightPerUnit;
         return `<tr style="border-top:1px solid var(--border);">
           <td style="padding:5px 6px;font-weight:500;">${esc(p.product)}</td>
           <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${p.qty}</td>
-          <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${fmt$(p.unitCost || 0)}</td>
+          <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${fmt$(p.unitCost || 0)}${(p.taxPerUnit||0)>0?`<span style='color:#9c6000;font-size:10px;'> +${fmt$(p.taxPerUnit)} tax</span>`:''}</td>
           <td style="padding:5px 6px;text-align:right;color:var(--text-muted);">${fmt$(freightPerUnit)}</td>
-          <td style="padding:5px 6px;text-align:right;font-weight:700;color:var(--aio-purple);">${fmt$(landedPerUnit)}</td>
+          <td style="padding:5px 6px;text-align:right;font-weight:700;color:var(--aio-purple);">${fmt$(finalLanded)}</td>
         </tr>`;
       }).join('');
     }
@@ -668,10 +669,11 @@
 
       const ts = Date.now();
       const shipmentProducts = order.products.map((p, pi) => {
-        const lineValue      = p.qty * (p.unitCost || 0);
+        const baseCost       = p.landedUnitCost || p.unitCost || 0; // unit cost already inc. tax
+        const lineValue      = p.qty * baseCost;
         const freightShare   = totalOrderValue > 0 ? (lineValue / totalOrderValue) * freightCost : 0;
         const freightPerUnit = p.qty > 0 ? freightShare / p.qty : 0;
-        const landedPerUnit  = parseFloat(((p.unitCost || 0) + freightPerUnit).toFixed(4));
+        const landedPerUnit  = parseFloat((baseCost + freightPerUnit).toFixed(4));
 
         const tag     = (p.product || 'ITEM').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
         const serials = Array.from({ length: p.qty }, (_, i) => `NS-${tag}-${ts + pi}-${i + 1}`);
