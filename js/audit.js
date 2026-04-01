@@ -31,6 +31,110 @@ const Audit = (() => {
     _renderCountList();
     _renderHistory();
     _wireSetupButtons();
+    _checkPausedAudit();
+  }
+
+  function _checkPausedAudit() {
+    const paused = DB.getPausedAudit();
+    const banner  = document.getElementById('audit-paused-banner');
+    const summary = document.getElementById('audit-paused-summary');
+    if (!banner) return;
+    if (!paused) { banner.style.display = 'none'; return; }
+
+    // Count how many serials are missing across all items
+    const missingCount = _getMissingFromPaused(paused).length;
+    const scannedCount = Object.values(paused.scanned || {}).reduce((a, v) => a + (v.matched?.length || 0) + (v.unexpected?.length || 0), 0);
+    banner.style.display = '';
+    if (summary) summary.textContent = `${paused.countList?.length || 0} products · ${scannedCount} scanned · ${missingCount} missing — paused ${new Date(paused.pausedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
+
+    // Wire buttons
+    const exportBtn  = document.getElementById('btn-export-paused-missing');
+    const resumeBtn  = document.getElementById('btn-resume-audit');
+    const discardBtn = document.getElementById('btn-discard-paused');
+
+    if (exportBtn && !exportBtn._wired) {
+      exportBtn._wired = true;
+      exportBtn.addEventListener('click', () => _exportPausedMissing(paused));
+    }
+    if (resumeBtn && !resumeBtn._wired) {
+      resumeBtn._wired = true;
+      resumeBtn.addEventListener('click', () => _resumeAudit(paused));
+    }
+    if (discardBtn && !discardBtn._wired) {
+      discardBtn._wired = true;
+      discardBtn.addEventListener('click', () => {
+        if (!confirm('Discard the paused count? This cannot be undone.')) return;
+        DB.clearPausedAudit();
+        banner.style.display = 'none';
+      });
+    }
+  }
+
+  function _getMissingFromPaused(paused) {
+    const missing = [];
+    (paused.countList || []).forEach(item => {
+      if (item.isNS) return;
+      const key     = item.product + '||' + (item.location || '');
+      const scanned = new Set((paused.scanned?.[key]?.matched || []).map(s => s.toUpperCase()));
+      (item.systemSerials || []).forEach(s => {
+        if (!scanned.has(s.toUpperCase())) missing.push({ serial: s, product: item.product, location: item.location });
+      });
+    });
+    return missing;
+  }
+
+  function _exportPausedMissing(paused) {
+    const missing = _getMissingFromPaused(paused);
+    const rows = [['Serial Number', 'Product', 'Location', 'Status']];
+    missing.forEach(m => rows.push([m.serial, m.product, m.location || '', 'Not scanned']));
+    const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a    = Object.assign(document.createElement('a'), {
+      href:     URL.createObjectURL(blob),
+      download: `missing-serials-${new Date().toISOString().slice(0,10)}.csv`,
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  function _resumeAudit(paused) {
+    // Restore state from saved paused audit
+    _countList    = paused.countList || [];
+    _scanned      = {};
+    _nsCounts     = paused.nsCounts || {};
+    _lostSet      = new Set(paused.lostSet || []);
+    _phase        = 2;
+
+    // Restore scanned sets (arrays → Sets)
+    Object.entries(paused.scanned || {}).forEach(([k, v]) => {
+      _scanned[k] = { matched: new Set(v.matched || []), unexpected: v.unexpected || [] };
+    });
+
+    DB.clearPausedAudit();
+    document.getElementById('audit-paused-banner').style.display = 'none';
+    document.getElementById('audit-setup-panel').style.display  = 'none';
+    document.getElementById('audit-active-panel').style.display = '';
+
+    _buildSerialLookup();
+    _renderProductPanels();
+
+    const input  = document.getElementById('audit-serial-input');
+    const submit = document.getElementById('btn-audit-submit');
+    if (input) { input.disabled = false; input.value = ''; }
+    if (!input?._wired) {
+      if (input) { input._wired = true; input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } }); }
+      if (submit) submit.addEventListener('click', _submitSerial);
+    }
+    const finBtn = document.getElementById('btn-finish-audit');
+    if (finBtn) { finBtn.disabled = false; finBtn.textContent = 'Complete Count'; }
+    if (finBtn && !finBtn._wired) { finBtn._wired = true; finBtn.addEventListener('click', _completeCount); }
+    const cancelBtn = document.getElementById('btn-cancel-audit');
+    if (cancelBtn && !cancelBtn._wired) { cancelBtn._wired = true; cancelBtn.addEventListener('click', _cancel); }
+
+    const pauseBtn = document.getElementById('btn-pause-audit');
+    if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
+    const pauseBtn = document.getElementById('btn-pause-audit');
+    if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
+    if (input) input.focus();
   }
 
   function _populateLocFilter() {
@@ -267,6 +371,15 @@ const Audit = (() => {
   }
 
   let _serialLookup = {};
+
+  function _buildSerialLookup() {
+    _serialLookup = {};
+    _countList.forEach(item => {
+      (item.systemSerials || []).forEach(s => {
+        _serialLookup[s.toUpperCase()] = item;
+      });
+    });
+  }
 
   function _renderProductPanels() {
     const container = document.getElementById('audit-product-panels');
@@ -674,6 +787,54 @@ const Audit = (() => {
     // Patch DB record
     const records = DB.getAuditRecords();
     if (records.length) { records[records.length-1].lost = _lostSet.size; DB.save(); }
+  }
+
+  // ── pause ─────────────────────────────────────────────────────────────
+  function _pause() {
+    if (!confirm('Pause this count?\n\nYour progress will be saved and you can resume or export the missing serial list from the audit page.')) return;
+
+    // Serialise Sets to arrays for storage
+    const scannedSerializable = {};
+    Object.entries(_scanned).forEach(([k, v]) => {
+      scannedSerializable[k] = { matched: [...v.matched], unexpected: v.unexpected };
+    });
+
+    // Calculate missing at pause time for summary
+    const missingSerials = [];
+    _countList.forEach(item => {
+      if (item.isNS) return;
+      const key     = item.product + '||' + (item.location || '');
+      const scanned = new Set(scannedSerializable[key]?.matched?.map(s => s.toUpperCase()) || []);
+      (item.systemSerials || []).forEach(s => {
+        if (!scanned.has(s.toUpperCase())) missingSerials.push({ serial: s, product: item.product, location: item.location });
+      });
+    });
+
+    DB.savePausedAudit({
+      countList:  _countList,
+      scanned:    scannedSerializable,
+      nsCounts:   _nsCounts,
+      lostSet:    [..._lostSet],
+      missing:    missingSerials,
+      pausedAt:   new Date().toISOString(),
+    });
+
+    // Auto-download missing serials CSV
+    if (missingSerials.length > 0) {
+      const rows = [['Serial Number', 'Product', 'Location', 'Status']];
+      missingSerials.forEach(m => rows.push([m.serial, m.product, m.location || '', 'Not scanned']));
+      const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a    = Object.assign(document.createElement('a'), {
+        href:     URL.createObjectURL(blob),
+        download: `missing-serials-${new Date().toISOString().slice(0,10)}.csv`,
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    _reset();
+    // Show resume banner
+    _checkPausedAudit();
   }
 
   // ── cancel/reset ──────────────────────────────────────────────────────
