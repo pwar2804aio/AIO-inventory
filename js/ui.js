@@ -1047,10 +1047,11 @@ Items will remain in Stock Holding with no customer attached.`)) return;
       : '';
 
     const tbody = document.getElementById('hist-body');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty">No movements found</div></td></tr>'; return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No movements found</div></td></tr>'; return; }
     tbody.innerHTML = rows.map(m => {
       const party   = m.type==='IN' ? (m.supplier||'—') : (m.customer||'—');
       const preview = m.serials.slice(0,3).join(', ') + (m.serials.length>3 ? ` +${m.serials.length-3}` : '');
+      const actor = m.type==='IN' ? (m.receivedBy||'—') : (m.by||'—');
       return `<tr title="${esc(m.serials.join(', '))}">
         <td style="color:var(--text-hint)">${fmtDateFull(m.date)}</td>
         <td><span class="badge ${m.type==='IN'?'b-in':'b-out'}">${m.type}</span></td>
@@ -1059,6 +1060,7 @@ Items will remain in Stock Holding with no customer attached.`)) return;
         <td><span class="loc-badge">${esc(m.location||'—')}</span></td>
         <td>${m.serials.length}</td>
         <td>${esc(party)}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${esc(actor)}</td>
         <td class="serial-mono">${esc(preview)}</td>
       </tr>`;
     }).join('');
