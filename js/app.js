@@ -781,7 +781,7 @@
   let _outCounter = 0;
 
   function newOutRow() {
-    return { id: 'out' + (++_outCounter), product: '', location: '', serials: [], serialCosts: {}, useSerials: true };
+    return { id: 'out' + (++_outCounter), product: '', location: '', serials: [], serialCosts: {}, useSerials: true, qty: '' };
   }
 
   function buildOutRowCard(row, idx, total) {
@@ -1024,9 +1024,12 @@
       const isNoSerial = inStock.length > 0 && inStock.every(s => s.startsWith('NS-'));
 
       if (isNoSerial) {
+        // Always re-read qty directly from DOM at submit time — never trust row.qty alone
+        const freshQty = qtyEl ? (parseInt(qtyEl.value) || 0) : 0;
+        row.qty = freshQty;
         if (!row.qty || row.qty < 1) { UI.showAlert(`Enter a quantity for "${row.product}".`, 'error'); return; }
         if (row.qty > inStock.length) { UI.showAlert(`Only ${inStock.length} unit${inStock.length!==1?'s':''} of "${row.product}" available.`, 'error'); return; }
-        row.serials = inStock.slice(0, row.qty);
+        row.serials = inStock.slice(0, row.qty); // row.qty is now guaranteed to be a valid positive integer
       } else {
         if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
       }
