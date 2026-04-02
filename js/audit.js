@@ -1519,17 +1519,27 @@ const Audit = (() => {
         if (qty < 1 || qty > maxShort) { alert(`Enter a quantity between 1 and ${maxShort}`); return; }
         if (!confirm(`Write off ${qty} unit${qty!==1?'s':''} of "${product}" as permanently lost?\nThis removes them from inventory.`)) return;
 
-        // Get NS serials from inventory to create OUT movements
-        const invMap = Inventory.getInventoryMap ? Inventory.getInventoryMap() : null;
-        const key = product + '||' + location;
         const now = new Date().toISOString();
         const by = Auth.getName ? Auth.getName() : (Auth.getUser()?.email || '');
 
-        // For NS items, create a qty-based OUT movement
+        // Get actual NS serials from stock (system uses NS- prefixed serial strings)
+        const nsInStock = Inventory.getAllSerialRows().filter(r =>
+          r.product === product &&
+          r.location === location &&
+          r.status === 'in-stock' &&
+          r.serial.startsWith('NS-')
+        );
+        const toWriteOff = nsInStock.slice(0, qty).map(r => r.serial);
+
+        if (toWriteOff.length === 0) {
+          alert('Could not find NS stock items to write off — they may already have been removed.');
+          return;
+        }
+
         DB.addMovement({
           id: Date.now(), type: 'OUT',
           product, category: '', location,
-          qty, serials: [],
+          serials: toWriteOff,
           customer: 'Lost Stock — Count Write-off',
           by, ref: `Audit write-off`,
           date: now, isLost: true,
