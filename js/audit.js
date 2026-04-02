@@ -366,25 +366,168 @@ const Audit = (() => {
     if (!el) return;
     const records = DB.getAuditRecords().slice().reverse();
     if (!records.length) { el.innerHTML = '<div class="empty" style="padding:.75rem 0">No counts recorded yet</div>'; return; }
+    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
     el.innerHTML = `<table class="product-stock-table">
       <thead><tr>
-        <th style="width:15%">Date</th><th style="width:20%">Scope</th>
-        <th style="width:9%">Products</th><th style="width:9%">Expected</th>
-        <th style="width:9%">Matched</th><th style="width:9%">Missing</th>
-        <th style="width:9%">Lost</th><th style="width:9%">NS var.</th>
-        <th style="width:11%">Value at risk</th>
+        <th style="width:14%">Date</th><th style="width:22%">Scope</th>
+        <th style="width:8%">Expected</th><th style="width:8%">Matched</th>
+        <th style="width:8%">Missing</th><th style="width:8%">Written off</th>
+        <th style="width:10%">Value at risk</th>
+        <th style="width:22%"></th>
       </tr></thead>
-      <tbody>${records.map(r=>`<tr>
-        <td style="color:var(--text-muted);font-size:12px">${fmtDate(r.date)}</td>
-        <td style="font-size:12px">${_esc(r.scope)}</td>
-        <td>${r.productCount||'—'}</td><td>${r.expected}</td>
-        <td style="color:#1a7a3c;font-weight:600">${r.matched}</td>
-        <td style="color:${r.missing>0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.missing}</td>
-        <td style="color:${(r.lost||0)>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${r.lost||0}</td>
-        <td style="color:${(r.nsVariance||0)!==0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.nsVariance!=null?(r.nsVariance>0?'+':'')+r.nsVariance:'—'}</td>
-        <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(r.missingValue||0)}</td>
-      </tr>`).join('')}</tbody>
+      <tbody>${records.map((r,idx)=>{
+        const pendingMissing = (r.missingSerials||[]).filter(s => !(r.writtenOffSerials||[]).includes(s) && !(r.foundSerials||[]).includes(s));
+        const writtenOff = (r.writtenOffSerials||[]).length || (r.lost||0);
+        return `<tr>
+          <td style="color:var(--text-muted);font-size:12px">${fmtDate(r.date)}</td>
+          <td style="font-size:12px">${_esc(r.scope)}</td>
+          <td>${r.expected}</td>
+          <td style="color:#1a7a3c;font-weight:600">${r.matched}</td>
+          <td style="color:${r.missing>0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.missing}</td>
+          <td style="color:${writtenOff>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${writtenOff}</td>
+          <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(r.missingValue||0)}</td>
+          <td style="text-align:right;">
+            ${r.missing > 0 && isAdmin ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${pendingMissing.length>0?`⚠ Review ${pendingMissing.length} missing`:'✓ All resolved'}</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>`;
+
+    // Wire review buttons
+    el.querySelectorAll('.audit-history-review').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const records = DB.getAuditRecords().slice().reverse();
+        _showHistoryReview(records[parseInt(btn.dataset.idx)], parseInt(btn.dataset.idx));
+      });
+    });
+  }
+
+  function _showHistoryReview(record, idx) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'audit-review-overlay';
+
+    const missing = record.missingSerials || [];
+    const writtenOff = new Set((record.writtenOffSerials || []).map(s=>s.toUpperCase()));
+    const found = new Set((record.foundSerials || []).map(s=>s.toUpperCase()));
+
+    const pending = missing.filter(s => !writtenOff.has(s.toUpperCase()) && !found.has(s.toUpperCase()));
+    const alreadyWrittenOff = missing.filter(s => writtenOff.has(s.toUpperCase()));
+    const alreadyFound = missing.filter(s => found.has(s.toUpperCase()));
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:620px;max-height:85vh;display:flex;flex-direction:column;">
+        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>⚠ Missing serials — ${_esc(record.scope)}</span>
+          <button class="btn-remove-row" id="audit-review-close">×</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${fmtDate(record.date)} · ${missing.length} missing serial${missing.length!==1?'s':''} from this count</div>
+
+        ${pending.length > 0 ? `
+        <div style="margin-bottom:10px;padding:10px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:12px;font-weight:700;color:#7a5000;">⚠ ${pending.length} pending — not yet actioned</div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-xs" id="audit-review-mark-all-found" style="font-size:11px;color:#1a7a3c;border-color:#b8e0c4;">✓ Mark all as found</button>
+              <button class="btn btn-ghost btn-xs" id="audit-review-write-all" style="font-size:11px;color:#9c2a00;border-color:#f5c6b0;">🗑 Write off all ${pending.length}</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;max-height:150px;overflow-y:auto;" id="audit-review-pending-list">
+            ${pending.map(s=>`<div style="display:flex;align-items:center;gap:4px;background:white;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">
+              <span style="font-family:var(--mono);font-size:11px;">${_esc(s)}</span>
+              <button class="btn-review-found" data-serial="${_esc(s)}" title="Mark as found" style="background:none;border:none;cursor:pointer;color:#1a7a3c;font-size:14px;padding:0 2px;">✓</button>
+              <button class="btn-review-writeoff" data-serial="${_esc(s)}" title="Write off as lost" style="background:none;border:none;cursor:pointer;color:#9c2a00;font-size:14px;padding:0 2px;">🗑</button>
+            </div>`).join('')}
+          </div>
+        </div>` : `<div style="padding:10px;background:#eaf7ee;border:1.5px solid #b8e0c4;border-radius:8px;color:#1a6b38;font-size:13px;margin-bottom:10px;">✅ All missing serials have been actioned</div>`}
+
+        ${alreadyWrittenOff.length > 0 ? `
+        <div style="margin-bottom:8px;font-size:12px;">
+          <span style="font-weight:600;color:#9c2a00;">🗑 Written off (${alreadyWrittenOff.length}):</span>
+          <span style="color:var(--text-muted);margin-left:6px;font-family:var(--mono);font-size:11px;">${alreadyWrittenOff.join(' · ')}</span>
+        </div>` : ''}
+        ${alreadyFound.length > 0 ? `
+        <div style="margin-bottom:8px;font-size:12px;">
+          <span style="font-weight:600;color:#1a7a3c;">✓ Marked as found (${alreadyFound.length}):</span>
+          <span style="color:var(--text-muted);margin-left:6px;font-family:var(--mono);font-size:11px;">${alreadyFound.join(' · ')}</span>
+        </div>` : ''}
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:auto;padding-top:12px;border-top:1px solid var(--border);">
+          <button class="btn btn-ghost" id="audit-review-close2">Close</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('#audit-review-close').addEventListener('click', () => { overlay.remove(); _renderHistory(); });
+    overlay.querySelector('#audit-review-close2').addEventListener('click', () => { overlay.remove(); _renderHistory(); });
+    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); _renderHistory(); } });
+
+    // Helper to action a serial
+    function _actionSerial(serial, action) {
+      const records = DB.getAuditRecords();
+      // Find this record by id
+      const recIdx = records.findIndex(r => r.id === record.id);
+      if (recIdx === -1) return;
+      const rec = records[recIdx];
+
+      if (action === 'writeoff') {
+        if (!rec.writtenOffSerials) rec.writtenOffSerials = [];
+        if (!rec.writtenOffSerials.includes(serial)) rec.writtenOffSerials.push(serial);
+        rec.lost = (rec.writtenOffSerials || []).length;
+        // Create OUT movement as lost
+        const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === serial.toUpperCase()) || {};
+        DB.addMovement({
+          id: Date.now() + Math.random(), type: 'OUT',
+          product: info.product || rec.scope, category: info.category || '', location: info.location || '',
+          serials: [serial], customer: 'Lost Stock — Count Write-off',
+          by: Auth.getName ? Auth.getName() : '', ref: `Audit: ${rec.scope} (${fmtDate(rec.date)})`,
+          date: new Date().toISOString(), isLost: true,
+        });
+      } else if (action === 'found') {
+        if (!rec.foundSerials) rec.foundSerials = [];
+        if (!rec.foundSerials.includes(serial)) rec.foundSerials.push(serial);
+      }
+      DB.save();
+      // Update record reference for next action
+      Object.assign(record, rec);
+    }
+
+    // Wire individual buttons
+    overlay.querySelectorAll('.btn-review-found').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _actionSerial(btn.dataset.serial, 'found');
+        const item = btn.closest('div[style]');
+        if (item) { item.style.opacity = '.4'; item.querySelectorAll('button').forEach(b => b.disabled = true); item.title = 'Marked as found'; }
+      });
+    });
+    overlay.querySelectorAll('.btn-review-writeoff').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!confirm(`Write off "${btn.dataset.serial}" as permanently lost?\nThis will create a lost stock movement removing it from inventory.`)) return;
+        _actionSerial(btn.dataset.serial, 'writeoff');
+        const item = btn.closest('div[style]');
+        if (item) { item.style.opacity = '.4'; item.style.textDecoration = 'line-through'; item.querySelectorAll('button').forEach(b => b.disabled = true); }
+      });
+    });
+
+    // Wire bulk buttons
+    const writeAllBtn = overlay.querySelector('#audit-review-write-all');
+    if (writeAllBtn) {
+      writeAllBtn.addEventListener('click', () => {
+        if (!confirm(`Write off all ${pending.length} missing serials as permanently lost?\nThis will remove them from inventory.`)) return;
+        pending.forEach(s => _actionSerial(s, 'writeoff'));
+        overlay.remove();
+        _renderHistory();
+      });
+    }
+    const foundAllBtn = overlay.querySelector('#audit-review-mark-all-found');
+    if (foundAllBtn) {
+      foundAllBtn.addEventListener('click', () => {
+        if (!confirm(`Mark all ${pending.length} missing serials as found?\nNo stock movements will be created.`)) return;
+        pending.forEach(s => _actionSerial(s, 'found'));
+        overlay.remove();
+        _renderHistory();
+      });
+    }
   }
 
   // ── Phase 2: Start counting ───────────────────────────────────────────
@@ -831,6 +974,8 @@ const Audit = (() => {
       nsVariance: nsGroupsEntered > 0 ? totalNsVariance : null,
       missingSerials: allMissingSerials.map(r=>r.serial),
       unexpectedSerials: allUnexpectedSerials.map(r=>r.serial),
+      writtenOffSerials: [],
+      foundSerials: [],
     });
 
     _renderReport();
