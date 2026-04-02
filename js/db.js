@@ -11,7 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
-  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [], auditRecords: [], pendingUsers: {}, pendingDeployments: [], pausedAudit: null };
+  let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [], auditRecords: [], pendingUsers: {}, pendingDeployments: [], pausedAudits: {} };
   let _db    = null;
   let _ready = false;
   let _onReadyCallbacks = [];
@@ -28,7 +28,7 @@ const DB = (() => {
       const snap   = await getDoc(docRef);
       if (snap.exists()) {
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{}, pendingDeployments: d.pendingDeployments||[], pausedAudit: d.pausedAudit||null };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{}, pendingDeployments: d.pendingDeployments||[], pausedAudits: d.pausedAudits||{} };
       } else {
         await setDoc(docRef, _data);
       }
@@ -37,7 +37,7 @@ const DB = (() => {
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
         const d = snap.data();
-        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{}, pendingDeployments: d.pendingDeployments||[], pausedAudit: d.pausedAudit||null };
+        _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{}, pendingDeployments: d.pendingDeployments||[], pausedAudits: d.pausedAudits||{} };
         if (typeof _currentView !== 'undefined') _refreshView();
       });
 
@@ -202,10 +202,19 @@ const DB = (() => {
   function addAuditRecord(record)  { if(!_data.auditRecords) _data.auditRecords=[]; _data.auditRecords.push(record); _save(); }
   function getAuditRecords()       { return _data.auditRecords || []; }
 
-  // Paused audit state
-  function savePausedAudit(state) { _data.pausedAudit = state; _save(); }
-  function getPausedAudit()       { return _data.pausedAudit || null; }
-  function clearPausedAudit()     { _data.pausedAudit = null; _save(); }
+  // Paused audits — map keyed by user email, supports multiple concurrent users
+  function savePausedAudit(email, state) {
+    if (!_data.pausedAudits) _data.pausedAudits = {};
+    _data.pausedAudits[email.toLowerCase()] = state;
+    _save();
+  }
+  function getPausedAudit(email) {
+    return (_data.pausedAudits || {})[email.toLowerCase()] || null;
+  }
+  function getAllPausedAudits() { return _data.pausedAudits || {}; }
+  function clearPausedAudit(email) {
+    if (_data.pausedAudits) { delete _data.pausedAudits[email.toLowerCase()]; _save(); }
+  }
 
   // Pending users — ghost Firebase Auth accounts awaiting profile creation on next login
   function setPendingUser(email, name, role) {
@@ -230,7 +239,7 @@ const DB = (() => {
   }
 
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, setPendingUser, getPendingUser, removePendingUser, addPendingDeployment, getPendingDeployments, removePendingDeployment, updatePendingDeployment, savePausedAudit, getPausedAudit, clearPausedAudit, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, setPendingUser, getPendingUser, removePendingUser, addPendingDeployment, getPendingDeployments, removePendingDeployment, updatePendingDeployment, savePausedAudit, getPausedAudit, getAllPausedAudits, clearPausedAudit, exportJSON, importJSON };
 })();
 
 let _currentView = 'dashboard';
