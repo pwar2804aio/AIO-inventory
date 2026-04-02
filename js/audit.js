@@ -387,7 +387,7 @@ const Audit = (() => {
           <td style="color:${writtenOff>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${writtenOff}</td>
           <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(r.missingValue||0)}</td>
           <td style="text-align:right;">
-            ${r.missing > 0 && isAdmin ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${pendingMissing.length>0?`⚠ Review ${pendingMissing.length} missing`:'✓ All resolved'}</button>` : ''}
+            ${isAdmin && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${(pendingMissing.length > 0 || (r.nsShortfalls||[]).some(ns=>ns.short>(ns.writtenOff||0))) ? `⚠ Review ${pendingMissing.length + (r.nsShortfalls||[]).reduce((a,ns)=>a+Math.max(0,ns.short-(ns.writtenOff||0)),0)} missing` : '✓ All resolved'}</button>` : ''}
           </td>
         </tr>`;
       }).join('')}</tbody>
@@ -408,6 +408,7 @@ const Audit = (() => {
     overlay.id = 'audit-review-overlay';
 
     const missing = record.missingSerials || [];
+    const nsShortfalls = record.nsShortfalls || [];
     const writtenOff = new Set((record.writtenOffSerials || []).map(s=>s.toUpperCase()));
     const found = new Set((record.foundSerials || []).map(s=>s.toUpperCase()));
 
@@ -415,13 +416,41 @@ const Audit = (() => {
     const alreadyWrittenOff = missing.filter(s => writtenOff.has(s.toUpperCase()));
     const alreadyFound = missing.filter(s => found.has(s.toUpperCase()));
 
+    const totalSerialPending = pending.length;
+    const totalNsPending = nsShortfalls.reduce((a, ns) => a + Math.max(0, ns.short - (ns.writtenOff||0)), 0);
+    const totalPending = totalSerialPending + totalNsPending;
+
+    // NS shortfall section HTML
+    const nsHtml = nsShortfalls.length ? nsShortfalls.map((ns, nsIdx) => {
+      const remaining = Math.max(0, ns.short - (ns.writtenOff||0));
+      return `<div style="padding:10px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <span style="font-weight:600;font-size:13px;">${_esc(ns.product)}</span>
+            ${ns.location ? `<span class="loc-badge" style="margin-left:6px;">${_esc(ns.location)}</span>` : ''}
+            <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">
+              System: ${ns.system} · Counted: ${ns.counted} · Short: <strong style="color:#9c6000;">${ns.short}</strong>
+              ${ns.writtenOff ? ` · Already written off: ${ns.writtenOff}` : ''}
+              ${remaining === 0 ? ' · <span style="color:#1a7a3c;">✅ Fully resolved</span>' : ''}
+            </div>
+          </div>
+          ${remaining > 0 ? `<div style="display:flex;gap:6px;align-items:center;">
+            <label style="font-size:12px;color:var(--text-muted);">Write off:</label>
+            <input type="number" class="fi ns-writeoff-qty" data-ns-idx="${nsIdx}" min="1" max="${remaining}" value="${remaining}" style="width:60px;padding:4px 6px;font-size:12px;" />
+            <button class="btn btn-ghost btn-xs ns-writeoff-btn" data-ns-idx="${nsIdx}" style="color:#9c2a00;border-color:#f5c6b0;white-space:nowrap;">🗑 Write off</button>
+          </div>` : ''}
+        </div>
+      </div>`;
+    }).join('') : '';
+
     overlay.innerHTML = `
       <div class="modal-box" style="max-width:620px;max-height:85vh;display:flex;flex-direction:column;">
         <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
-          <span>⚠ Missing serials — ${_esc(record.scope)}</span>
+          <span>⚠ Missing stock — ${_esc(record.scope)}</span>
           <button class="btn-remove-row" id="audit-review-close">×</button>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${fmtDate(record.date)} · ${missing.length} missing serial${missing.length!==1?'s':''} from this count</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${fmtDate(record.date)} · ${totalPending > 0 ? `${totalPending} unit${totalPending!==1?'s':''} pending action` : 'All resolved'}</div>
+        ${nsHtml ? `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">No-serial items (write off by quantity)</div>${nsHtml}</div>` : ''}
 
         ${pending.length > 0 ? `
         <div style="margin-bottom:10px;padding:10px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;">
@@ -492,7 +521,56 @@ const Audit = (() => {
       Object.assign(record, rec);
     }
 
-    // Wire individual buttons
+    // Wire NS write-off buttons
+    overlay.querySelectorAll('.ns-writeoff-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nsIdx = parseInt(btn.dataset.nsIdx);
+        const ns = nsShortfalls[nsIdx];
+        if (!ns) return;
+        const qtyInput = overlay.querySelector(`.ns-writeoff-qty[data-ns-idx="${nsIdx}"]`);
+        const qty = parseInt(qtyInput?.value) || 0;
+        if (qty < 1) return;
+        const remaining = Math.max(0, ns.short - (ns.writtenOff||0));
+        if (qty > remaining) { alert(`Only ${remaining} unit${remaining!==1?'s':''} left to write off.`); return; }
+        if (!confirm(`Write off ${qty} unit${qty!==1?'s':''} of "${ns.product}" as lost stock?\nThis removes them from inventory permanently.`)) return;
+
+        // Create OUT movements for the NS items
+        const invMap = Inventory.getInventoryMap();
+        const key = ns.product + '||' + ns.location;
+        const inStock = [...(invMap[key]?.inStock || [])];
+        const toWriteOff = inStock.slice(0, qty);
+        const now = new Date().toISOString();
+
+        if (toWriteOff.length > 0) {
+          DB.addMovement({
+            id: Date.now(), type: 'OUT',
+            product: ns.product, category: ns.category, location: ns.location,
+            serials: toWriteOff, customer: 'Lost Stock — Count Write-off',
+            by: Auth.getName ? Auth.getName() : '', ref: `Audit: ${record.scope} (${fmtDate(record.date)})`,
+            date: now, isLost: true,
+          });
+        }
+
+        // Update the nsShortfalls record
+        const allRecords = DB.getAuditRecords();
+        const recIdx = allRecords.findIndex(r => r.id === record.id);
+        if (recIdx > -1) {
+          if (!allRecords[recIdx].nsShortfalls) allRecords[recIdx].nsShortfalls = [];
+          if (!allRecords[recIdx].nsShortfalls[nsIdx]) allRecords[recIdx].nsShortfalls[nsIdx] = ns;
+          allRecords[recIdx].nsShortfalls[nsIdx].writtenOff = (ns.writtenOff||0) + qty;
+          allRecords[recIdx].lost = (allRecords[recIdx].lost||0) + qty;
+          Object.assign(record, allRecords[recIdx]);
+          DB.save();
+        }
+
+        // Refresh the modal
+        overlay.remove();
+        _showHistoryReview(record, idx);
+        _renderHistory();
+      });
+    });
+
+    // Wire individual serial buttons
     overlay.querySelectorAll('.btn-review-found').forEach(btn => {
       btn.addEventListener('click', () => {
         _actionSerial(btn.dataset.serial, 'found');
@@ -964,6 +1042,19 @@ const Audit = (() => {
                 totalNsVariance, nsGroupsEntered, missingValue, allMissingSerials, allUnexpectedSerials };
 
     // Save to DB
+    // Build NS shortfall summary for write-off later
+    const nsShortfalls = productReports
+      .filter(pr => (pr.type === 'ns' || pr.type === 'mixed') && pr.diff != null && pr.diff < 0)
+      .map(pr => ({
+        product:  pr.item.product,
+        category: pr.item.category || '',
+        location: pr.item.location || '',
+        system:   pr.item.systemNsCount,
+        counted:  pr.phys,
+        short:    Math.abs(pr.diff),
+        writtenOff: 0,
+      }));
+
     DB.addAuditRecord({
       id: Date.now(), date: new Date().toISOString(),
       scope: _countList.map(i => i.product + (i.location?' @ '+i.location:'')).join(', '),
@@ -976,6 +1067,7 @@ const Audit = (() => {
       unexpectedSerials: allUnexpectedSerials.map(r=>r.serial),
       writtenOffSerials: [],
       foundSerials: [],
+      nsShortfalls,
     });
 
     _renderReport();
