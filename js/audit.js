@@ -614,6 +614,10 @@ const Audit = (() => {
             _histWriteOff([serial], record, btn);
           };
         });
+        document.querySelectorAll('.audit-remove-unexpected').forEach(btn => {
+          if (btn._wired) return; // already wired by _wireReportButtons
+        });
+
         document.querySelectorAll('.audit-write-off-product').forEach(btn => {
           btn.onclick = (e) => {
             e.stopPropagation();
@@ -1501,12 +1505,14 @@ const Audit = (() => {
                     : '<span class="audit-badge audit-badge-unexpected">❓ Unexpected</span>';
         const lostBtn = r.cat==='missing'
           ? `<button class="btn btn-ghost btn-xs audit-mark-lost" data-serial="${_esc(r.serial)}" style="color:#9c2a00;border-color:#f5c6b0;white-space:nowrap;">Write off</button>` : '';
+        const removeUnexpBtn = r.cat==='unexpected'
+          ? `<button class="btn btn-ghost btn-xs audit-remove-unexpected" data-serial="${_esc(r.serial)}" style="color:var(--text-muted);white-space:nowrap;">✕ Remove</button>` : '';
         const rowId = `audit-row-${r.serial.replace(/[^a-z0-9]/gi,'_')}`;
         const info  = Inventory.getAllSerialRows().find(row => row.serial.toUpperCase() === r.serial.toUpperCase()) || {};
         return `<tr class="${rc}" id="${rowId}">
           <td>${badge}</td>
           <td style="font-family:var(--mono);font-size:11px;font-weight:500">${_esc(r.serial)}</td>
-          <td>${lostBtn}</td>
+          <td>${lostBtn}${removeUnexpBtn}</td>
         </tr>`;
       }).join('');
 
@@ -1562,6 +1568,51 @@ const Audit = (() => {
     if (newBtn && !newBtn._wired) { newBtn._wired = true; newBtn.addEventListener('click', _reset); }
     const exportBtn = document.getElementById('btn-audit-export-report');
     if (exportBtn && !exportBtn._wired) { exportBtn._wired = true; exportBtn.addEventListener('click', _exportCSV); }
+
+    // Wire remove-unexpected buttons
+    document.querySelectorAll('.audit-remove-unexpected').forEach(btn => {
+      if (btn._wired) return;
+      btn._wired = true;
+      btn.addEventListener('click', () => {
+        const serial = btn.dataset.serial;
+        if (!confirm(`Remove "${serial}" from the count?\nNo stock movements are affected.`)) return;
+
+        // Update historical record if viewing one
+        if (_report?._historicalRecord) {
+          const rec = _report._historicalRecord;
+          const recs = DB.getAuditRecords();
+          const ri = recs.findIndex(r => r.id === rec.id);
+          if (ri > -1) {
+            recs[ri].unexpectedSerials = (recs[ri].unexpectedSerials||[]).filter(s => s.toUpperCase() !== serial.toUpperCase());
+            recs[ri].unexpected = recs[ri].unexpectedSerials.length;
+            Object.values(recs[ri]._scanned||{}).forEach(st => {
+              st.unexpected = (st.unexpected||[]).filter(s => s.toUpperCase() !== serial.toUpperCase());
+            });
+            Object.assign(rec, recs[ri]);
+            DB.save();
+          }
+          _viewHistoricalReport(rec);
+          return;
+        }
+
+        // Live report — remove from DOM and update last record
+        const rowEl = document.getElementById(`audit-row-${serial.replace(/[^a-z0-9]/gi,'_')}`);
+        if (rowEl) rowEl.remove();
+        Object.values(_scanned||{}).forEach(st => {
+          st.unexpected = (st.unexpected||[]).filter(s => s.toUpperCase() !== serial.toUpperCase());
+        });
+        const records = DB.getAuditRecords();
+        if (records.length) {
+          const last = records[records.length-1];
+          last.unexpectedSerials = (last.unexpectedSerials||[]).filter(s => s.toUpperCase() !== serial.toUpperCase());
+          last.unexpected = last.unexpectedSerials.length;
+          Object.values(last._scanned||{}).forEach(st => {
+            st.unexpected = (st.unexpected||[]).filter(s => s.toUpperCase() !== serial.toUpperCase());
+          });
+          DB.save();
+        }
+      });
+    });
 
     // Wire NS write-off buttons (works for both live and historical reports)
     document.querySelectorAll('.audit-ns-writeoff-btn').forEach(btn => {
