@@ -216,7 +216,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v77</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v78</span>
     </nav>
   </header>
 
@@ -334,6 +334,16 @@
           <button class="btn btn-primary" id="btn-audit-submit">Add ↵</button>
         </div>
         <div id="audit-scan-feedback" style="min-height:22px;margin-top:6px;font-size:13px;font-weight:500;"></div>
+        <!-- Scanned serials log -->
+        <div id="audit-scan-log-wrap" style="display:none;margin-top:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;">
+              Scanned this session — <span id="audit-scan-log-count">0</span> serials
+            </div>
+            <button class="btn btn-ghost btn-xs" id="btn-audit-log-toggle" style="font-size:11px;">▲ Hide list</button>
+          </div>
+          <div id="audit-scan-log" style="display:flex;flex-wrap:wrap;gap:4px;max-height:140px;overflow-y:auto;padding:4px 0;"></div>
+        </div>
       </div>
 
       <!-- Per-product counting panels -->
@@ -1075,14 +1085,14 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=77"></script>
-<script src="js/auth-ui.js?v=77"></script>
-<script src="js/scanner.js?v=77"></script>
-<script src="js/db.js?v=77"></script>
-<script src="js/inventory.js?v=77"></script>
-<script src="js/reports.js?v=77"></script>
-<script src="js/ui.js?v=77"></script>
-<script src="js/audit.js?v=77"></script>
-<script src="js/app.js?v=77"></script>
+<script src="js/auth.js?v=78"></script>
+<script src="js/auth-ui.js?v=78"></script>
+<script src="js/scanner.js?v=78"></script>
+<script src="js/db.js?v=78"></script>
+<script src="js/inventory.js?v=78"></script>
+<script src="js/reports.js?v=78"></script>
+<script src="js/ui.js?v=78"></script>
+<script src="js/audit.js?v=78"></script>
+<script src="js/app.js?v=78"></script>
 </body>
 </html>
