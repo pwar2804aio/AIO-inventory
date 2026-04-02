@@ -369,11 +369,12 @@ const Audit = (() => {
     const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
     el.innerHTML = `<table class="product-stock-table">
       <thead><tr>
-        <th style="width:14%">Date</th><th style="width:22%">Scope</th>
-        <th style="width:8%">Expected</th><th style="width:8%">Matched</th>
-        <th style="width:8%">Missing</th><th style="width:8%">Written off</th>
-        <th style="width:10%">Value at risk</th>
-        <th style="width:22%"></th>
+        <th style="width:11%">Date & Time</th><th style="width:16%">Scope</th>
+        <th style="width:10%">Completed by</th>
+        <th style="width:7%">Expected</th><th style="width:7%">Matched</th>
+        <th style="width:7%">Missing</th><th style="width:7%">Written off</th>
+        <th style="width:9%">Value at risk</th>
+        <th style="width:26%"></th>
       </tr></thead>
       <tbody>${records.map((r,idx)=>{
         const pendingMissing = (r.missingSerials||[]).filter(s => !(r.writtenOffSerials||[]).includes(s) && !(r.foundSerials||[]).includes(s));
@@ -383,8 +384,12 @@ const Audit = (() => {
         const canResume = r._countList && r.missing > 0 && !r.completed; // snapshot exists and not fully matched
         const hasSnapshot = !!r._countList;
         return `<tr>
-          <td style="color:var(--text-muted);font-size:12px">${fmtDate(r.date)}</td>
+          <td style="color:var(--text-muted);font-size:11px;white-space:nowrap;">
+            ${r.completedAt ? new Date(r.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : fmtDate(r.date)}<br>
+            <span style="font-size:10px;">${r.completedAt ? new Date(r.completedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
+          </td>
           <td style="font-size:12px">${_esc(r.scope)}</td>
+          <td style="font-size:11px;color:var(--text-muted);">${_esc(r.completedBy || '—')}</td>
           <td>${r.expected}</td>
           <td style="color:#1a7a3c;font-weight:600">${r.matched}</td>
           <td style="color:${r.missing>0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.missing}</td>
@@ -518,7 +523,8 @@ const Audit = (() => {
       headerBanner.innerHTML = `
         <div>
           <strong>${_esc(record.scope)}</strong>
-          <span style="color:var(--text-muted);margin-left:8px;">${fmtDate(record.date)}</span>
+          <span style="color:var(--text-muted);margin-left:8px;">${record.completedAt ? new Date(record.completedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : fmtDate(record.date)}</span>
+          ${record.completedBy ? `<span style="color:var(--text-muted);margin-left:8px;">by <strong>${_esc(record.completedBy)}</strong></span>` : ''}
           ${(record.writtenOffSerials||[]).length>0?`<span style="margin-left:8px;color:#9c2a00;">· ${(record.writtenOffSerials||[]).length} written off</span>`:''}
           ${(record.foundSerials||[]).length>0?`<span style="margin-left:8px;color:#1a7a3c;">· ${(record.foundSerials||[]).length} found</span>`:''}
         </div>
@@ -1337,6 +1343,8 @@ const Audit = (() => {
 
     DB.addAuditRecord({
       id: Date.now(), date: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      completedBy: Auth.getName ? Auth.getName() : (Auth.getUser()?.email || 'Unknown'),
       scope: _countList.map(i => i.product + (i.location?' @ '+i.location:'')).join(', '),
       productCount: _countList.length,
       locF: '', catF: '', prodF: '',
