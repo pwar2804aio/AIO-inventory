@@ -514,6 +514,7 @@ const Audit = (() => {
     document.getElementById('audit-report-panel').style.display = '';
 
     _renderReport();
+    _wireReportButtons();
 
     // Override the report header to show it's historical + add back/resume buttons
     const reportSummaryEl = document.getElementById('audit-report-summary');
