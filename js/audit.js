@@ -1420,6 +1420,12 @@ const Audit = (() => {
             <td style="font-size:12px">${pr.short>0?fmt$(pr.short):'—'}</td>
             <td><span class="audit-badge ${pr.diff===null?'audit-badge-missing':pr.diff===0?'audit-badge-match':'audit-badge-missing'}">${diffStr}</span></td>
           </tr></tbody></table>
+          ${pr.diff !== null && pr.diff < 0 ? `<div style="margin-top:10px;padding:10px;background:#fffbf0;border:1.5px solid #f0d860;border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#7a5000;">Write off short stock:</span>
+            <input type="number" class="fi audit-ns-writeoff-qty" data-product="${_esc(item.product)}" data-location="${_esc(item.location||'')}" min="1" max="${Math.abs(pr.diff)}" value="${Math.abs(pr.diff)}" style="width:70px;padding:4px 8px;font-size:13px;" />
+            <span style="font-size:12px;color:var(--text-muted);">of ${Math.abs(pr.diff)} short</span>
+            <button class="btn btn-ghost btn-sm audit-ns-writeoff-btn" data-product="${_esc(item.product)}" data-location="${_esc(item.location||'')}" data-short="${Math.abs(pr.diff)}" style="color:#9c2a00;border-color:#f5c6b0;">🗑 Write off</button>
+          </div>` : ''}
         </div>`;
       }
 
@@ -1498,6 +1504,63 @@ const Audit = (() => {
     if (newBtn && !newBtn._wired) { newBtn._wired = true; newBtn.addEventListener('click', _reset); }
     const exportBtn = document.getElementById('btn-audit-export-report');
     if (exportBtn && !exportBtn._wired) { exportBtn._wired = true; exportBtn.addEventListener('click', _exportCSV); }
+
+    // Wire NS write-off buttons (works for both live and historical reports)
+    document.querySelectorAll('.audit-ns-writeoff-btn').forEach(btn => {
+      if (btn._wired) return;
+      btn._wired = true;
+      btn.addEventListener('click', () => {
+        const product  = btn.dataset.product;
+        const location = btn.dataset.location;
+        const maxShort = parseInt(btn.dataset.short);
+        const qtyInput = btn.parentElement.querySelector('.audit-ns-writeoff-qty');
+        const qty = parseInt(qtyInput?.value) || 0;
+        if (qty < 1 || qty > maxShort) { alert(`Enter a quantity between 1 and ${maxShort}`); return; }
+        if (!confirm(`Write off ${qty} unit${qty!==1?'s':''} of "${product}" as permanently lost?\nThis removes them from inventory.`)) return;
+
+        // Get NS serials from inventory to create OUT movements
+        const invMap = Inventory.getInventoryMap ? Inventory.getInventoryMap() : null;
+        const key = product + '||' + location;
+        const now = new Date().toISOString();
+        const by = Auth.getName ? Auth.getName() : (Auth.getUser()?.email || '');
+
+        // For NS items, create a qty-based OUT movement
+        DB.addMovement({
+          id: Date.now(), type: 'OUT',
+          product, category: '', location,
+          qty, serials: [],
+          customer: 'Lost Stock — Count Write-off',
+          by, ref: `Audit write-off`,
+          date: now, isLost: true,
+        });
+
+        // If this is a historical report, update the record too
+        if (_report?._historicalRecord) {
+          const rec = _report._historicalRecord;
+          const recs = DB.getAuditRecords();
+          const ri = recs.findIndex(r => r.id === rec.id);
+          if (ri > -1) {
+            if (!recs[ri].nsShortfalls) recs[ri].nsShortfalls = [];
+            const nsIdx = recs[ri].nsShortfalls.findIndex(ns => ns.product === product && ns.location === location);
+            if (nsIdx > -1) recs[ri].nsShortfalls[nsIdx].writtenOff = (recs[ri].nsShortfalls[nsIdx].writtenOff||0) + qty;
+            recs[ri].lost = (recs[ri].lost||0) + qty;
+            Object.assign(rec, recs[ri]);
+            DB.save();
+          }
+          // Refresh the historical report
+          _viewHistoricalReport(rec);
+        } else {
+          // Live report — update lostSet count and refresh
+          if (!_lostSet) _lostSet = new Set();
+          const records = DB.getAuditRecords();
+          if (records.length) { records[records.length-1].lost = (records[records.length-1].lost||0) + qty; DB.save(); }
+          btn.textContent = `✓ ${qty} written off`;
+          btn.disabled = true;
+          btn.style.color = '#888';
+          if (qtyInput) qtyInput.disabled = true;
+        }
+      });
+    });
   }
 
   // ── write-off ─────────────────────────────────────────────────────────
