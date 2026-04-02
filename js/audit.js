@@ -378,6 +378,10 @@ const Audit = (() => {
       <tbody>${records.map((r,idx)=>{
         const pendingMissing = (r.missingSerials||[]).filter(s => !(r.writtenOffSerials||[]).includes(s) && !(r.foundSerials||[]).includes(s));
         const writtenOff = (r.writtenOffSerials||[]).length || (r.lost||0);
+        const hasPendingMissing = pendingMissing.length > 0 || (r.nsShortfalls||[]).some(ns=>ns.short>(ns.writtenOff||0));
+        const pendingTotal = pendingMissing.length + (r.nsShortfalls||[]).reduce((a,ns)=>a+Math.max(0,ns.short-(ns.writtenOff||0)),0);
+        const canResume = r._countList && r.missing > 0 && !r.completed; // snapshot exists and not fully matched
+        const hasSnapshot = !!r._countList;
         return `<tr>
           <td style="color:var(--text-muted);font-size:12px">${fmtDate(r.date)}</td>
           <td style="font-size:12px">${_esc(r.scope)}</td>
@@ -386,8 +390,12 @@ const Audit = (() => {
           <td style="color:${r.missing>0?'#9c6000':'var(--text-muted)'};font-weight:600">${r.missing}</td>
           <td style="color:${writtenOff>0?'#9c2a00':'var(--text-muted)'};font-weight:600">${writtenOff}</td>
           <td style="font-size:12px;font-weight:600;color:var(--aio-purple)">${fmt$(r.missingValue||0)}</td>
-          <td style="text-align:right;">
-            ${isAdmin && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${(pendingMissing.length > 0 || (r.nsShortfalls||[]).some(ns=>ns.short>(ns.writtenOff||0))) ? `⚠ Review ${pendingMissing.length + (r.nsShortfalls||[]).reduce((a,ns)=>a+Math.max(0,ns.short-(ns.writtenOff||0)),0)} missing` : '✓ All resolved'}</button>` : ''}
+          <td style="text-align:right;white-space:nowrap;">
+            <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
+              ${hasSnapshot ? `<button class="btn btn-ghost btn-xs audit-history-view" data-idx="${idx}" style="font-size:11px;">📋 View report</button>` : ''}
+              ${hasSnapshot && r.missing > 0 ? `<button class="btn btn-ghost btn-xs audit-history-resume" data-idx="${idx}" style="font-size:11px;color:var(--aio-purple);">▶ Resume</button>` : ''}
+              ${isAdmin && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${hasPendingMissing ? `⚠ ${pendingTotal} pending` : '✓ All resolved'}</button>` : ''}
+            </div>
           </td>
         </tr>`;
       }).join('')}</tbody>
@@ -400,6 +408,328 @@ const Audit = (() => {
         _showHistoryReview(records[parseInt(btn.dataset.idx)], parseInt(btn.dataset.idx));
       });
     });
+
+    // Wire view report buttons
+    el.querySelectorAll('.audit-history-view').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const records = DB.getAuditRecords().slice().reverse();
+        _viewHistoricalReport(records[parseInt(btn.dataset.idx)]);
+      });
+    });
+
+    // Wire resume buttons
+    el.querySelectorAll('.audit-history-resume').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const records = DB.getAuditRecords().slice().reverse();
+        const rec = records[parseInt(btn.dataset.idx)];
+        if (!rec._countList) { UI.showAlert('No snapshot available to resume this count.', 'error'); return; }
+        if (!confirm(`Resume the count for "${rec.scope}"?\n\nYou'll continue from where it was completed — ${rec.matched} matched, ${rec.missing} still missing.`)) return;
+        _resumeFromRecord(rec);
+      });
+    });
+  }
+
+  // ── View historical report ────────────────────────────────────────────
+  function _viewHistoricalReport(record) {
+    if (!record._countList || !record._scanned) {
+      UI.showAlert('No detailed snapshot available for this count.', 'error'); return;
+    }
+
+    // Rebuild report from snapshot
+    const savedCountList = record._countList;
+    const savedScanned = {};
+    Object.entries(record._scanned).forEach(([k, v]) => {
+      savedScanned[k] = { matched: new Set(v.matched || []), unexpected: v.unexpected || [] };
+    });
+    const savedNsCounts = record._nsCounts || {};
+    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
+
+    const productReports = savedCountList.map(item => {
+      const k = item.product + '||' + (item.location || '');
+      const st = savedScanned[k] || { matched: new Set(), unexpected: [] };
+      if (item.isNS) {
+        const phys = savedNsCounts[k];
+        const diff = phys != null ? phys - item.systemNsCount : null;
+        return { item, type: 'ns', phys, diff, short: diff != null && diff < 0 ? Math.abs(diff) : 0 };
+      } else {
+        const missing = item.systemSerials.filter(s => !st.matched.has(s.toUpperCase()));
+        const matched = [...st.matched];
+        const unexp = st.unexpected || [];
+        return { item, type: 'mixed', matched, missing, unexp, mVal: 0 };
+      }
+    });
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.alignItems = 'flex-start';
+    overlay.style.paddingTop = '40px';
+
+    const reportsHtml = productReports.map((pr, prIdx) => {
+      const item = pr.item;
+      if (pr.type === 'ns') {
+        const diffStr = pr.diff === null ? 'Not counted' : pr.diff === 0 ? '✅ Correct' : pr.diff > 0 ? `↑ Over by ${pr.diff}` : `↓ Short by ${Math.abs(pr.diff)}`;
+        return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-hover);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-weight:600;margin-bottom:6px;">${_esc(item.product)} ${item.location ? `<span class="loc-badge">${_esc(item.location)}</span>` : ''}</div>
+          <div style="font-size:13px;">System: ${item.systemNsCount} · Counted: ${pr.phys ?? '—'} · ${diffStr}</div>
+        </div>`;
+      }
+      const writtenOff = new Set((record.writtenOffSerials || []).map(s=>s.toUpperCase()));
+      const found = new Set((record.foundSerials || []).map(s=>s.toUpperCase()));
+      const allRows = [
+        ...pr.missing.map(s => ({ serial:s, cat: writtenOff.has(s.toUpperCase()) ? 'writtenoff' : found.has(s.toUpperCase()) ? 'found' : 'missing' })),
+        ...(pr.unexp||[]).map(s => ({ serial:s, cat:'unexpected' })),
+        ...pr.matched.map(s => ({ serial:s, cat:'matched' })),
+      ];
+      const tableRows = allRows.map(r => {
+        const badge = r.cat==='matched' ? '<span class="audit-badge audit-badge-match">✅ Matched</span>'
+          : r.cat==='missing' ? '<span class="audit-badge audit-badge-missing">⚠ Missing</span>'
+          : r.cat==='writtenoff' ? '<span class="audit-badge" style="background:#f5d8d8;color:#9c2a00;">🗑 Written off</span>'
+          : r.cat==='found' ? '<span class="audit-badge audit-badge-match" style="background:#d8f0e8;">✓ Found</span>'
+          : '<span class="audit-badge audit-badge-unexpected">❓ Unexpected</span>';
+        const adminActions = isAdmin && (r.cat === 'missing') ? `
+          <button class="btn btn-ghost btn-xs hist-mark-found" data-serial="${_esc(r.serial)}" data-recid="${record.id}" style="font-size:10px;color:#1a7a3c;border-color:#b8e0c4;">✓ Found</button>
+          <button class="btn btn-ghost btn-xs hist-write-off" data-serial="${_esc(r.serial)}" data-recid="${record.id}" style="font-size:10px;color:#9c2a00;border-color:#f5c6b0;">🗑 Write off</button>
+        ` : '';
+        const adminRemove = isAdmin && r.cat === 'matched' ? `
+          <button class="btn btn-ghost btn-xs hist-remove-serial" data-serial="${_esc(r.serial)}" data-pridx="${prIdx}" style="font-size:10px;color:var(--text-muted);">✕ Remove from count</button>
+        ` : '';
+        return `<tr>
+          <td>${badge}</td>
+          <td style="font-family:var(--mono);font-size:11px;">${_esc(r.serial)}</td>
+          <td style="text-align:right;">${adminActions}${adminRemove}</td>
+        </tr>`;
+      }).join('');
+
+      return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-hover);border-radius:8px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-weight:600;">${_esc(item.product)} ${item.location?`<span class="loc-badge">${_esc(item.location)}</span>`:''}</div>
+          <div style="font-size:12px;color:${pr.missing.length===0?'#1a7a3c':'#9c6000'};font-weight:600;">
+            ${pr.matched.length}/${item.systemSerials.length} matched
+            ${pr.missing.length>0?` · ⚠ ${pr.missing.length} missing`:''}
+            ${pr.unexp?.length>0?` · ❓ ${pr.unexp.length} unexpected`:''}
+          </div>
+        </div>
+        ${allRows.length ? `<div class="table-wrap" style="max-height:300px;overflow-y:auto;"><table>
+          <thead><tr><th style="width:18%">Result</th><th style="width:50%">Serial</th><th style="width:32%"></th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table></div>` : ''}
+        ${isAdmin && pr.missing.length > 1 ? `<div style="margin-top:8px;display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-xs hist-write-off-all" data-pridx="${prIdx}" data-recid="${record.id}" style="color:#9c2a00;border-color:#f5c6b0;font-size:11px;">🗑 Write off all ${pr.missing.filter(s=>!writtenOff.has(s.toUpperCase())).length} missing</button>
+          <button class="btn btn-ghost btn-xs hist-found-all" data-pridx="${prIdx}" data-recid="${record.id}" style="color:#1a7a3c;border-color:#b8e0c4;font-size:11px;">✓ Mark all as found</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:700px;max-height:85vh;display:flex;flex-direction:column;">
+        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>📋 Count report — ${_esc(record.scope)}</span>
+          <button class="btn-remove-row" id="hist-report-close">×</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+          ${fmtDate(record.date)} · ${record.expected} expected · ${record.matched} matched · ${record.missing} missing
+          ${record.lost ? ` · ${record.lost} written off` : ''}
+        </div>
+        <div style="flex:1;overflow-y:auto;">${reportsHtml}</div>
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <div>
+            ${record.missing > 0 ? `<button class="btn btn-ghost btn-sm" id="hist-report-resume">▶ Resume this count</button>` : ''}
+          </div>
+          <button class="btn btn-ghost" id="hist-report-close2">Close</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    const closeModal = () => { overlay.remove(); _renderHistory(); };
+    overlay.querySelector('#hist-report-close').addEventListener('click', closeModal);
+    overlay.querySelector('#hist-report-close2').addEventListener('click', closeModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+    const resumeBtn = overlay.querySelector('#hist-report-resume');
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', () => {
+        if (!confirm(`Resume this count for "${record.scope}"?`)) return;
+        overlay.remove();
+        _resumeFromRecord(record);
+      });
+    }
+
+    // Helper to update record in DB
+    function _updateRecord(fn) {
+      const recs = DB.getAuditRecords();
+      const ri = recs.findIndex(r => r.id === record.id);
+      if (ri < 0) return;
+      fn(recs[ri]);
+      Object.assign(record, recs[ri]);
+      DB.save();
+    }
+
+    // Write off individual serial
+    overlay.querySelectorAll('.hist-write-off').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const s = btn.dataset.serial;
+        if (!confirm(`Write off "${s}" as permanently lost?`)) return;
+        _updateRecord(rec => {
+          if (!rec.writtenOffSerials) rec.writtenOffSerials = [];
+          if (!rec.writtenOffSerials.includes(s)) rec.writtenOffSerials.push(s);
+          rec.lost = (rec.writtenOffSerials||[]).length;
+          const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === s.toUpperCase()) || {};
+          DB.addMovement({ id: Date.now()+Math.random(), type:'OUT', product: info.product||rec.scope, category: info.category||'', location: info.location||'', serials:[s], customer:'Lost Stock — Count Write-off', by: Auth.getName?Auth.getName():'', ref:`Audit: ${rec.scope} (${fmtDate(rec.date)})`, date: new Date().toISOString(), isLost:true });
+        });
+        overlay.remove(); _viewHistoricalReport(record);
+      });
+    });
+
+    // Mark individual as found
+    overlay.querySelectorAll('.hist-mark-found').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const s = btn.dataset.serial;
+        _updateRecord(rec => { if (!rec.foundSerials) rec.foundSerials=[]; if (!rec.foundSerials.includes(s)) rec.foundSerials.push(s); });
+        overlay.remove(); _viewHistoricalReport(record);
+      });
+    });
+
+    // Write off all missing for a product
+    overlay.querySelectorAll('.hist-write-off-all').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pr = productReports[parseInt(btn.dataset.pridx)];
+        if (!pr) return;
+        const writtenOff = new Set((record.writtenOffSerials||[]).map(s=>s.toUpperCase()));
+        const toWriteOff = pr.missing.filter(s => !writtenOff.has(s.toUpperCase()));
+        if (!confirm(`Write off all ${toWriteOff.length} missing serials as permanently lost?`)) return;
+        _updateRecord(rec => {
+          if (!rec.writtenOffSerials) rec.writtenOffSerials = [];
+          toWriteOff.forEach(s => {
+            if (!rec.writtenOffSerials.includes(s)) rec.writtenOffSerials.push(s);
+            const info = Inventory.getAllSerialRows().find(r=>r.serial.toUpperCase()===s.toUpperCase())||{};
+            DB.addMovement({ id:Date.now()+Math.random(), type:'OUT', product:info.product||rec.scope, category:info.category||'', location:info.location||'', serials:[s], customer:'Lost Stock — Count Write-off', by:Auth.getName?Auth.getName():'', ref:`Audit: ${rec.scope} (${fmtDate(rec.date)})`, date:new Date().toISOString(), isLost:true });
+          });
+          rec.lost = (rec.writtenOffSerials||[]).length;
+        });
+        overlay.remove(); _viewHistoricalReport(record);
+      });
+    });
+
+    // Mark all missing as found for a product
+    overlay.querySelectorAll('.hist-found-all').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pr = productReports[parseInt(btn.dataset.pridx)];
+        if (!pr) return;
+        const found = new Set((record.foundSerials||[]).map(s=>s.toUpperCase()));
+        const toMark = pr.missing.filter(s => !found.has(s.toUpperCase()));
+        if (!confirm(`Mark all ${toMark.length} as found?`)) return;
+        _updateRecord(rec => { if (!rec.foundSerials) rec.foundSerials=[]; toMark.forEach(s => { if (!rec.foundSerials.includes(s)) rec.foundSerials.push(s); }); });
+        overlay.remove(); _viewHistoricalReport(record);
+      });
+    });
+
+    // Remove from count (removes from matched, adds to missing)
+    overlay.querySelectorAll('.hist-remove-serial').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const s = btn.dataset.serial;
+        if (!confirm(`Remove "${s}" from this count?\n\nIt will be moved from Matched to Missing. No stock movements are created.`)) return;
+        _updateRecord(rec => {
+          if (!rec.missingSerials) rec.missingSerials = [];
+          if (!rec.missingSerials.includes(s)) rec.missingSerials.push(s);
+          rec.matched = Math.max(0, (rec.matched||1) - 1);
+          rec.missing = (rec.missing||0) + 1;
+          // Update the snapshot
+          if (rec._scanned) {
+            Object.keys(rec._scanned).forEach(k => {
+              const idx = rec._scanned[k].matched?.indexOf(s);
+              if (idx > -1) rec._scanned[k].matched.splice(idx, 1);
+              const idxU = rec._scanned[k].matched?.indexOf(s.toUpperCase());
+              if (idxU > -1) rec._scanned[k].matched.splice(idxU, 1);
+            });
+          }
+        });
+        overlay.remove(); _viewHistoricalReport(record);
+      });
+    });
+  }
+
+  // ── Resume from completed record ──────────────────────────────────────
+  function _resumeFromRecord(record) {
+    if (!record._countList || !record._scanned) return;
+
+    _countList = JSON.parse(JSON.stringify(record._countList));
+    _nsCounts  = Object.assign({}, record._nsCounts || {});
+    _lostSet   = new Set(record.writtenOffSerials || []);
+    _phase     = 2;
+
+    // Restore scanned state — exclude serials that have been written off
+    _scanned = {};
+    Object.entries(record._scanned).forEach(([k, v]) => {
+      const woSet = new Set((record.writtenOffSerials||[]).map(s=>s.toUpperCase()));
+      _scanned[k] = {
+        matched: new Set((v.matched||[]).filter(s => !woSet.has(s.toUpperCase()))),
+        unexpected: v.unexpected || [],
+      };
+    });
+
+    // Also mark found serials as matched (so they show scanned)
+    const foundSet = new Set((record.foundSerials||[]).map(s=>s.toUpperCase()));
+    if (foundSet.size > 0) {
+      _countList.forEach(item => {
+        const k = item.product + '||' + (item.location||'');
+        if (!_scanned[k]) _scanned[k] = { matched: new Set(), unexpected: [] };
+        item.systemSerials.forEach(s => {
+          if (foundSet.has(s.toUpperCase())) _scanned[k].matched.add(s.toUpperCase());
+        });
+      });
+    }
+
+    _buildSerialLookup();
+
+    // Switch to active panel
+    document.getElementById('audit-setup-panel').style.display  = 'none';
+    document.getElementById('audit-report-panel').style.display = 'none';
+    document.getElementById('audit-active-panel').style.display = '';
+
+    const scopeLabel = _countList.length === 1
+      ? _countList[0].product + (_countList[0].location ? ' @ ' + _countList[0].location : '')
+      : `${_countList.length} products`;
+    const progressEl = document.getElementById('audit-progress-title');
+    const scopeEl = document.getElementById('audit-scope-label');
+    if (progressEl) progressEl.textContent = 'Resumed count';
+    if (scopeEl) scopeEl.textContent = scopeLabel;
+
+    _renderProductPanels();
+    _updateScanLog();
+
+    const input  = document.getElementById('audit-serial-input');
+    const submit = document.getElementById('btn-audit-submit');
+    if (input) { input.disabled = false; input.value = ''; }
+    if (input && !input._wired) {
+      input._wired = true;
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } });
+      input.addEventListener('paste', e => {
+        e.preventDefault();
+        const text = (e.clipboardData||window.clipboardData).getData('text');
+        const serials = text.split(/[,
+	]+/).map(s=>s.trim()).filter(Boolean);
+        if (serials.length <= 1) { input.value = serials[0]||''; return; }
+        let added=0,skipped=0;
+        serials.forEach(s => { const r=_submitSerialValue(s); if(r==='added') added++; else skipped++; });
+        input.value='';
+        const fb=document.getElementById('audit-scan-feedback');
+        if(fb){fb.textContent=`Pasted ${serials.length} serials — ${added} added${skipped>0?', '+skipped+' skipped':''}`;setTimeout(()=>{fb.textContent='';},3000);}
+      });
+      if (submit) submit.addEventListener('click', _submitSerial);
+    }
+
+    const finBtn = document.getElementById('btn-finish-audit');
+    if (finBtn) { finBtn.disabled = false; finBtn.textContent = 'Complete Count'; }
+    if (finBtn && !finBtn._wired) { finBtn._wired = true; finBtn.addEventListener('click', _completeCount); }
+
+    const cancelBtn = document.getElementById('btn-cancel-audit');
+    if (cancelBtn && !cancelBtn._wired) { cancelBtn._wired = true; cancelBtn.addEventListener('click', _cancel); }
+
+    const pauseBtn = document.getElementById('btn-pause-audit');
+    if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
+
+    if (input) input.focus();
   }
 
   function _showHistoryReview(record, idx) {
@@ -1055,6 +1385,12 @@ const Audit = (() => {
         writtenOff: 0,
       }));
 
+    // Serialize scanned state for resume
+    const _scannedSnapshot = {};
+    Object.entries(_scanned).forEach(([k,v]) => {
+      _scannedSnapshot[k] = { matched: [...v.matched], unexpected: v.unexpected };
+    });
+
     DB.addAuditRecord({
       id: Date.now(), date: new Date().toISOString(),
       scope: _countList.map(i => i.product + (i.location?' @ '+i.location:'')).join(', '),
@@ -1064,10 +1400,16 @@ const Audit = (() => {
       unexpected: totalUnexpected, lost: 0, missingValue,
       nsVariance: nsGroupsEntered > 0 ? totalNsVariance : null,
       missingSerials: allMissingSerials.map(r=>r.serial),
+      matchedSerials: productReports.filter(pr=>pr.matched).flatMap(pr=>pr.matched),
       unexpectedSerials: allUnexpectedSerials.map(r=>r.serial),
       writtenOffSerials: [],
       foundSerials: [],
       nsShortfalls,
+      // Full snapshot for resume & report replay
+      _countList: JSON.parse(JSON.stringify(_countList)),
+      _scanned: _scannedSnapshot,
+      _nsCounts: Object.assign({}, _nsCounts),
+      completed: true,
     });
 
     _renderReport();
