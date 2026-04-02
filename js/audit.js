@@ -607,6 +607,7 @@ const Audit = (() => {
       feedback.textContent = `✅ ${raw} — ${item.product}`;
       _updateSerialPanel(idx, item);
       _updatePanelStatus(idx);
+      _updateScanLog();
     } else {
       // Unexpected — doesn't match any product in count list
       // Try to find which product panel it might belong to (best-effort: check all in-stock)
