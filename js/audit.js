@@ -707,8 +707,7 @@ const Audit = (() => {
       input.addEventListener('paste', e => {
         e.preventDefault();
         const text = (e.clipboardData||window.clipboardData).getData('text');
-        const serials = text.split(/[,
-	]+/).map(s=>s.trim()).filter(Boolean);
+        const serials = text.split(/[,\n\r\t]+/).map(s=>s.trim()).filter(Boolean);
         if (serials.length <= 1) { input.value = serials[0]||''; return; }
         let added=0,skipped=0;
         serials.forEach(s => { const r=_submitSerialValue(s); if(r==='added') added++; else skipped++; });
