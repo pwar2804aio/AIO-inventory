@@ -998,6 +998,8 @@ const Audit = (() => {
     // Patch DB record
     const records = DB.getAuditRecords();
     if (records.length) { records[records.length-1].lost = _lostSet.size; DB.save(); }
+    // Clear auto-saved audit — count is complete
+    const _ce = Auth.getUser()?.email; if (_ce) DB.clearPausedAudit(_ce);
   }
 
   // ── pause ─────────────────────────────────────────────────────────────
@@ -1094,11 +1096,12 @@ const Audit = (() => {
   // ── cancel/reset ──────────────────────────────────────────────────────
   function _cancel() {
     if (!confirm('Cancel this count? Progress will be lost.')) return;
-    _reset();
+    _reset(true); // clear saved state on explicit cancel
   }
 
-  function _reset() {
-    const _re = Auth.getUser()?.email; if (_re) DB.clearPausedAudit(_re);
+  function _reset(clearSaved = false) {
+    // Only clear the saved audit when explicitly cancelling/completing — NOT when pausing
+    if (clearSaved) { const _re = Auth.getUser()?.email; if (_re) DB.clearPausedAudit(_re); }
     _countList = []; _scanned = {}; _nsCounts = {}; _lostSet = new Set();
     _serialLookup = {}; _phase = 1; _report = null;
     const logWrap = document.getElementById('audit-scan-log-wrap');
