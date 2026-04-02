@@ -506,12 +506,16 @@ const Audit = (() => {
 
       if (item.isNS) {
         const phys = savedNsCounts[k];
-        const diff = phys != null ? phys - item.systemNsCount : null;
+        // Written-off items count as accounted for — add them to effective count
+        const nsWO = (record.nsShortfalls||[]).find(ns => ns.product===item.product && ns.location===(item.location||''));
+        const writtenOffQty = nsWO?.writtenOff || 0;
+        const effectivePhys = phys != null ? phys + writtenOffQty : null;
+        const diff = effectivePhys != null ? effectivePhys - item.systemNsCount : null;
         if (diff !== null) { totalNsVariance += diff; nsGroupsEntered++; }
         const short = diff !== null && diff < 0 ? Math.abs(diff) * unitCost : 0;
         totalExpected += item.systemNsCount;
         if (diff !== null && diff < 0) { totalMissing += Math.abs(diff); missingValue += short; }
-        return { item, type:'ns', phys, diff, short };
+        return { item, type:'ns', phys: effectivePhys, diff, short, writtenOffQty };
       } else {
         // Apply written-off and found adjustments to the display
         const missing = item.systemSerials.filter(s => !st.matched.has(s.toUpperCase()) && !writtenOffSet.has(s.toUpperCase()) && !foundSet.has(s.toUpperCase()));
@@ -885,8 +889,14 @@ const Audit = (() => {
         if (recIdx > -1) {
           if (!allRecords[recIdx].nsShortfalls) allRecords[recIdx].nsShortfalls = [];
           if (!allRecords[recIdx].nsShortfalls[nsIdx]) allRecords[recIdx].nsShortfalls[nsIdx] = ns;
-          allRecords[recIdx].nsShortfalls[nsIdx].writtenOff = (ns.writtenOff||0) + qty;
-          allRecords[recIdx].lost = (allRecords[recIdx].lost||0) + qty;
+          const _remaining3 = Math.max(0, ns.short-(ns.writtenOff||0));
+          const _actualQty3 = Math.min(qty, _remaining3);
+          allRecords[recIdx].nsShortfalls[nsIdx].writtenOff = (ns.writtenOff||0) + _actualQty3;
+          allRecords[recIdx].lost = (allRecords[recIdx].lost||0) + _actualQty3;
+          const _nsTotal3 = (allRecords[recIdx].nsShortfalls||[]).reduce((a,ns2)=>a+Math.max(0,ns2.short-(ns2.writtenOff||0)),0);
+          const _sm3 = (allRecords[recIdx].missingSerials||[]).filter(s=>!(allRecords[recIdx].writtenOffSerials||[]).includes(s)&&!(allRecords[recIdx].foundSerials||[]).includes(s)).length;
+          allRecords[recIdx].missing = _nsTotal3 + _sm3;
+          allRecords[recIdx].matched = allRecords[recIdx].expected - allRecords[recIdx].missing;
           Object.assign(record, allRecords[recIdx]);
           DB.save();
         }
@@ -1600,8 +1610,18 @@ const Audit = (() => {
           if (ri > -1) {
             if (!recs[ri].nsShortfalls) recs[ri].nsShortfalls = [];
             const nsIdx = recs[ri].nsShortfalls.findIndex(ns => ns.product === product && ns.location === location);
-            if (nsIdx > -1) recs[ri].nsShortfalls[nsIdx].writtenOff = (recs[ri].nsShortfalls[nsIdx].writtenOff||0) + qty;
+            if (nsIdx > -1) {
+              const _ns = recs[ri].nsShortfalls[nsIdx];
+              const _remaining = Math.max(0, _ns.short - (_ns.writtenOff||0));
+              const _actualQty = Math.min(qty, _remaining);
+              _ns.writtenOff = (_ns.writtenOff||0) + _actualQty;
+            }
             recs[ri].lost = (recs[ri].lost||0) + qty;
+            // Update missing/matched so history reflects write-offs
+            const _nsTotal = (recs[ri].nsShortfalls||[]).reduce((a,ns) => a + Math.max(0,ns.short-(ns.writtenOff||0)), 0);
+            const _serialMissing = (recs[ri].missingSerials||[]).filter(s=>!(recs[ri].writtenOffSerials||[]).includes(s)&&!(recs[ri].foundSerials||[]).includes(s)).length;
+            recs[ri].missing = _nsTotal + _serialMissing;
+            recs[ri].matched = recs[ri].expected - recs[ri].missing;
             Object.assign(rec, recs[ri]);
             DB.save();
           }
