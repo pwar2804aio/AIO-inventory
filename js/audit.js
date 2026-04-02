@@ -432,224 +432,154 @@ const Audit = (() => {
   // ── View historical report ────────────────────────────────────────────
   function _viewHistoricalReport(record) {
     if (!record._countList || !record._scanned) {
-      UI.showAlert('No detailed snapshot available for this count.', 'error'); return;
+      // No snapshot — fall back to the review modal
+      _showHistoryReview(record, DB.getAuditRecords().slice().reverse().findIndex(r=>r.id===record.id));
+      return;
     }
 
-    // Rebuild report from snapshot
-    const savedCountList = record._countList;
+    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
+
+    // Rebuild _report from snapshot so _renderReport() works
+    const savedCountList = JSON.parse(JSON.stringify(record._countList));
     const savedScanned = {};
     Object.entries(record._scanned).forEach(([k, v]) => {
       savedScanned[k] = { matched: new Set(v.matched || []), unexpected: v.unexpected || [] };
     });
     const savedNsCounts = record._nsCounts || {};
-    const isAdmin = typeof Auth !== 'undefined' && Auth.isAdmin();
+    const writtenOffSet = new Set((record.writtenOffSerials||[]).map(s=>s.toUpperCase()));
+    const foundSet = new Set((record.foundSerials||[]).map(s=>s.toUpperCase()));
+
+    let totalExpected=0, totalMatched=0, totalMissing=0, totalUnexpected=0, totalNsVariance=0, nsGroupsEntered=0, missingValue=0;
+    const allMissingSerials=[], allUnexpectedSerials=[];
 
     const productReports = savedCountList.map(item => {
-      const k = item.product + '||' + (item.location || '');
+      const k = item.product + '||' + (item.location||'');
       const st = savedScanned[k] || { matched: new Set(), unexpected: [] };
+      const unitCost = item.systemCount > 0
+        ? Inventory.getAllSerialRows().filter(r=>r.product===item.product&&r.status==='in-stock'&&r.cost!=null).reduce((a,r)=>a+r.cost,0) / Math.max(1,item.systemCount)
+        : 0;
+
       if (item.isNS) {
         const phys = savedNsCounts[k];
         const diff = phys != null ? phys - item.systemNsCount : null;
-        return { item, type: 'ns', phys, diff, short: diff != null && diff < 0 ? Math.abs(diff) : 0 };
+        if (diff !== null) { totalNsVariance += diff; nsGroupsEntered++; }
+        const short = diff !== null && diff < 0 ? Math.abs(diff) * unitCost : 0;
+        totalExpected += item.systemNsCount;
+        if (diff !== null && diff < 0) { totalMissing += Math.abs(diff); missingValue += short; }
+        return { item, type:'ns', phys, diff, short };
       } else {
-        const missing = item.systemSerials.filter(s => !st.matched.has(s.toUpperCase()));
-        const matched = [...st.matched];
+        // Apply written-off and found adjustments to the display
+        const missing = item.systemSerials.filter(s => !st.matched.has(s.toUpperCase()) && !writtenOffSet.has(s.toUpperCase()) && !foundSet.has(s.toUpperCase()));
+        const matched = [...st.matched, ...item.systemSerials.filter(s=>foundSet.has(s.toUpperCase()))];
         const unexp = st.unexpected || [];
-        return { item, type: 'mixed', matched, missing, unexp, mVal: 0 };
+        const mVal = missing.length * unitCost;
+        totalExpected += item.systemSerials.length;
+        totalMatched += matched.length;
+        totalMissing += missing.length;
+        totalUnexpected += unexp.length;
+        missingValue += mVal;
+        missing.forEach(s => allMissingSerials.push({ serial:s, item }));
+        unexp.forEach(s => allUnexpectedSerials.push({ serial:s, item }));
+        return { item, type:'serial', matched, missing, unexp, mVal, _rawMissing: item.systemSerials.filter(s=>!st.matched.has(s.toUpperCase())) };
       }
     });
 
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.alignItems = 'flex-start';
-    overlay.style.paddingTop = '40px';
+    _report = { productReports, totalExpected, totalMatched, totalMissing, totalUnexpected,
+                totalNsVariance, nsGroupsEntered, missingValue, allMissingSerials, allUnexpectedSerials,
+                _historicalRecord: record };
 
-    const reportsHtml = productReports.map((pr, prIdx) => {
-      const item = pr.item;
-      if (pr.type === 'ns') {
-        const diffStr = pr.diff === null ? 'Not counted' : pr.diff === 0 ? '✅ Correct' : pr.diff > 0 ? `↑ Over by ${pr.diff}` : `↓ Short by ${Math.abs(pr.diff)}`;
-        return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-hover);border-radius:8px;border:1px solid var(--border);">
-          <div style="font-weight:600;margin-bottom:6px;">${_esc(item.product)} ${item.location ? `<span class="loc-badge">${_esc(item.location)}</span>` : ''}</div>
-          <div style="font-size:13px;">System: ${item.systemNsCount} · Counted: ${pr.phys ?? '—'} · ${diffStr}</div>
+    // Show the report panel (same as after completing a count)
+    document.getElementById('audit-setup-panel').style.display  = 'none';
+    document.getElementById('audit-active-panel').style.display = 'none';
+    document.getElementById('audit-report-panel').style.display = '';
+
+    _renderReport();
+
+    // Override the report header to show it's historical + add back/resume buttons
+    const reportSummaryEl = document.getElementById('audit-report-summary');
+    if (reportSummaryEl) {
+      const headerBanner = document.createElement('div');
+      headerBanner.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px;background:var(--bg-hover);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:13px;';
+      headerBanner.innerHTML = `
+        <div>
+          <strong>${_esc(record.scope)}</strong>
+          <span style="color:var(--text-muted);margin-left:8px;">${fmtDate(record.date)}</span>
+          ${(record.writtenOffSerials||[]).length>0?`<span style="margin-left:8px;color:#9c2a00;">· ${(record.writtenOffSerials||[]).length} written off</span>`:''}
+          ${(record.foundSerials||[]).length>0?`<span style="margin-left:8px;color:#1a7a3c;">· ${(record.foundSerials||[]).length} found</span>`:''}
+        </div>
+        <div style="display:flex;gap:8px;">
+          ${record.missing > 0 ? `<button class="btn btn-orange btn-sm" id="btn-hist-resume-count">▶ Resume count</button>` : ''}
+          <button class="btn btn-ghost btn-sm" id="btn-hist-back-to-history">← Back to history</button>
         </div>`;
-      }
-      const writtenOff = new Set((record.writtenOffSerials || []).map(s=>s.toUpperCase()));
-      const found = new Set((record.foundSerials || []).map(s=>s.toUpperCase()));
-      const allRows = [
-        ...pr.missing.map(s => ({ serial:s, cat: writtenOff.has(s.toUpperCase()) ? 'writtenoff' : found.has(s.toUpperCase()) ? 'found' : 'missing' })),
-        ...(pr.unexp||[]).map(s => ({ serial:s, cat:'unexpected' })),
-        ...pr.matched.map(s => ({ serial:s, cat:'matched' })),
-      ];
-      const tableRows = allRows.map(r => {
-        const badge = r.cat==='matched' ? '<span class="audit-badge audit-badge-match">✅ Matched</span>'
-          : r.cat==='missing' ? '<span class="audit-badge audit-badge-missing">⚠ Missing</span>'
-          : r.cat==='writtenoff' ? '<span class="audit-badge" style="background:#f5d8d8;color:#9c2a00;">🗑 Written off</span>'
-          : r.cat==='found' ? '<span class="audit-badge audit-badge-match" style="background:#d8f0e8;">✓ Found</span>'
-          : '<span class="audit-badge audit-badge-unexpected">❓ Unexpected</span>';
-        const adminActions = isAdmin && (r.cat === 'missing') ? `
-          <button class="btn btn-ghost btn-xs hist-mark-found" data-serial="${_esc(r.serial)}" data-recid="${record.id}" style="font-size:10px;color:#1a7a3c;border-color:#b8e0c4;">✓ Found</button>
-          <button class="btn btn-ghost btn-xs hist-write-off" data-serial="${_esc(r.serial)}" data-recid="${record.id}" style="font-size:10px;color:#9c2a00;border-color:#f5c6b0;">🗑 Write off</button>
-        ` : '';
-        const adminRemove = isAdmin && r.cat === 'matched' ? `
-          <button class="btn btn-ghost btn-xs hist-remove-serial" data-serial="${_esc(r.serial)}" data-pridx="${prIdx}" style="font-size:10px;color:var(--text-muted);">✕ Remove from count</button>
-        ` : '';
-        return `<tr>
-          <td>${badge}</td>
-          <td style="font-family:var(--mono);font-size:11px;">${_esc(r.serial)}</td>
-          <td style="text-align:right;">${adminActions}${adminRemove}</td>
-        </tr>`;
-      }).join('');
-
-      return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-hover);border-radius:8px;border:1px solid var(--border);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <div style="font-weight:600;">${_esc(item.product)} ${item.location?`<span class="loc-badge">${_esc(item.location)}</span>`:''}</div>
-          <div style="font-size:12px;color:${pr.missing.length===0?'#1a7a3c':'#9c6000'};font-weight:600;">
-            ${pr.matched.length}/${item.systemSerials.length} matched
-            ${pr.missing.length>0?` · ⚠ ${pr.missing.length} missing`:''}
-            ${pr.unexp?.length>0?` · ❓ ${pr.unexp.length} unexpected`:''}
-          </div>
-        </div>
-        ${allRows.length ? `<div class="table-wrap" style="max-height:300px;overflow-y:auto;"><table>
-          <thead><tr><th style="width:18%">Result</th><th style="width:50%">Serial</th><th style="width:32%"></th></tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table></div>` : ''}
-        ${isAdmin && pr.missing.length > 1 ? `<div style="margin-top:8px;display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-xs hist-write-off-all" data-pridx="${prIdx}" data-recid="${record.id}" style="color:#9c2a00;border-color:#f5c6b0;font-size:11px;">🗑 Write off all ${pr.missing.filter(s=>!writtenOff.has(s.toUpperCase())).length} missing</button>
-          <button class="btn btn-ghost btn-xs hist-found-all" data-pridx="${prIdx}" data-recid="${record.id}" style="color:#1a7a3c;border-color:#b8e0c4;font-size:11px;">✓ Mark all as found</button>
-        </div>` : ''}
-      </div>`;
-    }).join('');
-
-    overlay.innerHTML = `
-      <div class="modal-box" style="max-width:700px;max-height:85vh;display:flex;flex-direction:column;">
-        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
-          <span>📋 Count report — ${_esc(record.scope)}</span>
-          <button class="btn-remove-row" id="hist-report-close">×</button>
-        </div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-          ${fmtDate(record.date)} · ${record.expected} expected · ${record.matched} matched · ${record.missing} missing
-          ${record.lost ? ` · ${record.lost} written off` : ''}
-        </div>
-        <div style="flex:1;overflow-y:auto;">${reportsHtml}</div>
-        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-          <div>
-            ${record.missing > 0 ? `<button class="btn btn-ghost btn-sm" id="hist-report-resume">▶ Resume this count</button>` : ''}
-          </div>
-          <button class="btn btn-ghost" id="hist-report-close2">Close</button>
-        </div>
-      </div>`;
-
-    document.body.appendChild(overlay);
-
-    const closeModal = () => { overlay.remove(); _renderHistory(); };
-    overlay.querySelector('#hist-report-close').addEventListener('click', closeModal);
-    overlay.querySelector('#hist-report-close2').addEventListener('click', closeModal);
-    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-
-    const resumeBtn = overlay.querySelector('#hist-report-resume');
-    if (resumeBtn) {
-      resumeBtn.addEventListener('click', () => {
-        if (!confirm(`Resume this count for "${record.scope}"?`)) return;
-        overlay.remove();
-        _resumeFromRecord(record);
-      });
+      reportSummaryEl.insertBefore(headerBanner, reportSummaryEl.firstChild);
     }
 
-    // Helper to update record in DB
-    function _updateRecord(fn) {
-      const recs = DB.getAuditRecords();
-      const ri = recs.findIndex(r => r.id === record.id);
-      if (ri < 0) return;
-      fn(recs[ri]);
-      Object.assign(record, recs[ri]);
-      DB.save();
+    // Wire historical-specific buttons
+    const backBtn = document.getElementById('btn-hist-back-to-history');
+    if (backBtn) backBtn.addEventListener('click', () => {
+      document.getElementById('audit-report-panel').style.display = 'none';
+      document.getElementById('audit-setup-panel').style.display  = '';
+      _report = null;
+      _renderHistory();
+    });
+
+    const resumeBtn = document.getElementById('btn-hist-resume-count');
+    if (resumeBtn) resumeBtn.addEventListener('click', () => {
+      if (!confirm(`Resume the count for "${record.scope}"?\n\nYou'll continue scanning from where it was completed. ${(record.writtenOffSerials||[]).length>0?`${(record.writtenOffSerials||[]).length} written-off serials will be excluded.`:''}`)) return;
+      _resumeFromRecord(record);
+    });
+
+    // Add admin action buttons to each missing serial row in the report
+    if (isAdmin) {
+      setTimeout(() => {
+        document.querySelectorAll('.audit-mark-lost').forEach(btn => {
+          const serial = btn.dataset.serial;
+          // Override the default write-off to also update the historical record
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            if (!confirm(`Write off "${serial}" as permanently lost?\nThis removes it from inventory.`)) return;
+            _histWriteOff([serial], record, btn);
+          };
+        });
+        document.querySelectorAll('.audit-write-off-product').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const pr = _report.productReports[parseInt(btn.dataset.idx)];
+            if (!pr?.missing?.length) return;
+            const remaining = pr.missing.filter(s=>!new Set((record.writtenOffSerials||[]).map(x=>x.toUpperCase())).has(s.toUpperCase()));
+            if (!remaining.length) return;
+            if (!confirm(`Write off all ${remaining.length} missing serials as permanently lost?`)) return;
+            _histWriteOff(remaining, record, null);
+            btn.remove();
+          };
+        });
+      }, 100);
     }
-
-    // Write off individual serial
-    overlay.querySelectorAll('.hist-write-off').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const s = btn.dataset.serial;
-        if (!confirm(`Write off "${s}" as permanently lost?`)) return;
-        _updateRecord(rec => {
-          if (!rec.writtenOffSerials) rec.writtenOffSerials = [];
-          if (!rec.writtenOffSerials.includes(s)) rec.writtenOffSerials.push(s);
-          rec.lost = (rec.writtenOffSerials||[]).length;
-          const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === s.toUpperCase()) || {};
-          DB.addMovement({ id: Date.now()+Math.random(), type:'OUT', product: info.product||rec.scope, category: info.category||'', location: info.location||'', serials:[s], customer:'Lost Stock — Count Write-off', by: Auth.getName?Auth.getName():'', ref:`Audit: ${rec.scope} (${fmtDate(rec.date)})`, date: new Date().toISOString(), isLost:true });
-        });
-        overlay.remove(); _viewHistoricalReport(record);
-      });
-    });
-
-    // Mark individual as found
-    overlay.querySelectorAll('.hist-mark-found').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const s = btn.dataset.serial;
-        _updateRecord(rec => { if (!rec.foundSerials) rec.foundSerials=[]; if (!rec.foundSerials.includes(s)) rec.foundSerials.push(s); });
-        overlay.remove(); _viewHistoricalReport(record);
-      });
-    });
-
-    // Write off all missing for a product
-    overlay.querySelectorAll('.hist-write-off-all').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const pr = productReports[parseInt(btn.dataset.pridx)];
-        if (!pr) return;
-        const writtenOff = new Set((record.writtenOffSerials||[]).map(s=>s.toUpperCase()));
-        const toWriteOff = pr.missing.filter(s => !writtenOff.has(s.toUpperCase()));
-        if (!confirm(`Write off all ${toWriteOff.length} missing serials as permanently lost?`)) return;
-        _updateRecord(rec => {
-          if (!rec.writtenOffSerials) rec.writtenOffSerials = [];
-          toWriteOff.forEach(s => {
-            if (!rec.writtenOffSerials.includes(s)) rec.writtenOffSerials.push(s);
-            const info = Inventory.getAllSerialRows().find(r=>r.serial.toUpperCase()===s.toUpperCase())||{};
-            DB.addMovement({ id:Date.now()+Math.random(), type:'OUT', product:info.product||rec.scope, category:info.category||'', location:info.location||'', serials:[s], customer:'Lost Stock — Count Write-off', by:Auth.getName?Auth.getName():'', ref:`Audit: ${rec.scope} (${fmtDate(rec.date)})`, date:new Date().toISOString(), isLost:true });
-          });
-          rec.lost = (rec.writtenOffSerials||[]).length;
-        });
-        overlay.remove(); _viewHistoricalReport(record);
-      });
-    });
-
-    // Mark all missing as found for a product
-    overlay.querySelectorAll('.hist-found-all').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const pr = productReports[parseInt(btn.dataset.pridx)];
-        if (!pr) return;
-        const found = new Set((record.foundSerials||[]).map(s=>s.toUpperCase()));
-        const toMark = pr.missing.filter(s => !found.has(s.toUpperCase()));
-        if (!confirm(`Mark all ${toMark.length} as found?`)) return;
-        _updateRecord(rec => { if (!rec.foundSerials) rec.foundSerials=[]; toMark.forEach(s => { if (!rec.foundSerials.includes(s)) rec.foundSerials.push(s); }); });
-        overlay.remove(); _viewHistoricalReport(record);
-      });
-    });
-
-    // Remove from count (removes from matched, adds to missing)
-    overlay.querySelectorAll('.hist-remove-serial').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const s = btn.dataset.serial;
-        if (!confirm(`Remove "${s}" from this count?\n\nIt will be moved from Matched to Missing. No stock movements are created.`)) return;
-        _updateRecord(rec => {
-          if (!rec.missingSerials) rec.missingSerials = [];
-          if (!rec.missingSerials.includes(s)) rec.missingSerials.push(s);
-          rec.matched = Math.max(0, (rec.matched||1) - 1);
-          rec.missing = (rec.missing||0) + 1;
-          // Update the snapshot
-          if (rec._scanned) {
-            Object.keys(rec._scanned).forEach(k => {
-              const idx = rec._scanned[k].matched?.indexOf(s);
-              if (idx > -1) rec._scanned[k].matched.splice(idx, 1);
-              const idxU = rec._scanned[k].matched?.indexOf(s.toUpperCase());
-              if (idxU > -1) rec._scanned[k].matched.splice(idxU, 1);
-            });
-          }
-        });
-        overlay.remove(); _viewHistoricalReport(record);
-      });
-    });
   }
 
-  // ── Resume from completed record ──────────────────────────────────────
+  function _histWriteOff(serials, record, singleBtn) {
+    const now = new Date().toISOString();
+    const recs = DB.getAuditRecords();
+    const ri = recs.findIndex(r => r.id === record.id);
+    if (ri < 0) return;
+    serials.forEach(serial => {
+      if (!recs[ri].writtenOffSerials) recs[ri].writtenOffSerials = [];
+      if (!recs[ri].writtenOffSerials.includes(serial)) {
+        recs[ri].writtenOffSerials.push(serial);
+        const info = Inventory.getAllSerialRows().find(r=>r.serial.toUpperCase()===serial.toUpperCase())||{};
+        DB.addMovement({ id:Date.now()+Math.random(), type:'OUT', product:info.product||record.scope, category:info.category||'', location:info.location||'', serials:[serial], customer:'Lost Stock — Count Write-off', by:Auth.getName?Auth.getName():'', ref:`Audit: ${record.scope} (${fmtDate(record.date)})`, date:now, isLost:true });
+        if (singleBtn) { singleBtn.textContent='✓ Written off'; singleBtn.disabled=true; singleBtn.style.color='#888'; const rowEl=document.getElementById(`audit-row-${serial.replace(/[^a-z0-9]/gi,'_')}`); if(rowEl){rowEl.classList.remove('audit-row-missing');const b=rowEl.querySelector('.audit-badge');if(b){b.className='audit-badge';b.style.cssText='background:#f5d8d8;color:#9c2a00;';b.textContent='🗑 Written off';}} }
+      }
+    });
+    recs[ri].lost = (recs[ri].writtenOffSerials||[]).length;
+    Object.assign(record, recs[ri]);
+    DB.save();
+    if (!singleBtn) {
+      // Bulk write-off — refresh the view
+      _viewHistoricalReport(record);
+    }
+  }
+
   function _resumeFromRecord(record) {
     if (!record._countList || !record._scanned) return;
 
