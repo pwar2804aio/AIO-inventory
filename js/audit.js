@@ -792,15 +792,13 @@ const Audit = (() => {
 
   // ── pause ─────────────────────────────────────────────────────────────
   function _pause() {
-    if (!confirm('Pause this count?\n\nYour progress will be saved and you can resume or export the missing serial list from the audit page.')) return;
-
     // Serialise Sets to arrays for storage
     const scannedSerializable = {};
     Object.entries(_scanned).forEach(([k, v]) => {
       scannedSerializable[k] = { matched: [...v.matched], unexpected: v.unexpected };
     });
 
-    // Calculate missing at pause time for summary
+    // Calculate missing serials
     const missingSerials = [];
     _countList.forEach(item => {
       if (item.isNS) return;
@@ -811,31 +809,75 @@ const Audit = (() => {
       });
     });
 
-    DB.savePausedAudit({
-      countList:  _countList,
-      scanned:    scannedSerializable,
-      nsCounts:   _nsCounts,
-      lostSet:    [..._lostSet],
-      missing:    missingSerials,
-      pausedAt:   new Date().toISOString(),
+    // Show modal with missing list — user decides whether to pause
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const groupedByProduct = {};
+    missingSerials.forEach(m => {
+      const k = m.product + (m.location ? ' @ ' + m.location : '');
+      if (!groupedByProduct[k]) groupedByProduct[k] = [];
+      groupedByProduct[k].push(m.serial);
     });
 
-    // Auto-download missing serials CSV
-    if (missingSerials.length > 0) {
-      const rows = [['Serial Number', 'Product', 'Location', 'Status']];
-      missingSerials.forEach(m => rows.push([m.serial, m.product, m.location || '', 'Not scanned']));
-      const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a    = Object.assign(document.createElement('a'), {
-        href:     URL.createObjectURL(blob),
-        download: `missing-serials-${new Date().toISOString().slice(0,10)}.csv`,
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:560px;max-height:80vh;display:flex;flex-direction:column;">
+        <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>⏸ Pause count — missing serials</span>
+          <button class="btn-remove-row" id="pause-modal-close">×</button>
+        </div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+          ${missingSerials.length === 0
+            ? '<span style="color:var(--success-text);font-weight:600;">✓ All serials accounted for — nothing missing!</span>'
+            : `<strong>${missingSerials.length}</strong> serial${missingSerials.length!==1?'s':''} not yet scanned:`}
+        </div>
+        <div style="flex:1;overflow-y:auto;margin-bottom:14px;">
+          ${missingSerials.length === 0 ? '' : Object.entries(groupedByProduct).map(([prod, serials]) => `
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--aio-purple);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${_esc(prod)}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                ${serials.map(s => `<span style="font-family:var(--mono);font-size:12px;background:var(--bg-hover);padding:2px 8px;border-radius:4px;border:1px solid var(--border);">${_esc(s)}</span>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;">
+          <button class="btn btn-ghost" id="pause-modal-cancel">Keep counting</button>
+          ${missingSerials.length > 0 ? '<button class="btn btn-ghost" id="pause-modal-export">📥 Export CSV</button>' : ''}
+          <button class="btn btn-orange" id="pause-modal-confirm">Pause & save progress</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#pause-modal-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#pause-modal-cancel').addEventListener('click', () => overlay.remove());
+
+    const exportBtn = overlay.querySelector('#pause-modal-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        const rows = [['Serial Number', 'Product', 'Location', 'Status']];
+        missingSerials.forEach(m => rows.push([m.serial, m.product, m.location || '', 'Not scanned']));
+        const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a    = Object.assign(document.createElement('a'), {
+          href: URL.createObjectURL(blob),
+          download: `missing-serials-${new Date().toISOString().slice(0,10)}.csv`,
+        });
+        a.click(); URL.revokeObjectURL(a.href);
       });
-      a.click(); URL.revokeObjectURL(a.href);
     }
 
-    _reset();
-    // Show resume banner
-    _checkPausedAudit();
+    overlay.querySelector('#pause-modal-confirm').addEventListener('click', () => {
+      overlay.remove();
+      DB.savePausedAudit({
+        countList:  _countList,
+        scanned:    scannedSerializable,
+        nsCounts:   _nsCounts,
+        lostSet:    [..._lostSet],
+        missing:    missingSerials,
+        pausedAt:   new Date().toISOString(),
+      });
+      _reset();
+      _checkPausedAudit();
+    });
   }
 
   // ── cancel/reset ──────────────────────────────────────────────────────
