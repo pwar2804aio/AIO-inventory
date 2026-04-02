@@ -32,10 +32,82 @@ const Audit = (() => {
     _renderHistory();
     _wireSetupButtons();
     _checkPausedAudit();
+    _renderAdminCounts();
+  }
+
+  function _renderAdminCounts() {
+    const panel = document.getElementById('audit-admin-panel');
+    const body  = document.getElementById('audit-admin-counts-body');
+    if (!panel || !body) return;
+
+    // Only show to admins
+    if (typeof Auth === 'undefined' || !Auth.isAdmin()) { panel.style.display = 'none'; return; }
+
+    const allPaused = DB.getAllPausedAudits ? DB.getAllPausedAudits() : {};
+    const entries   = Object.values(allPaused);
+
+    if (!entries.length) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+
+    const myEmail = Auth.getUser()?.email?.toLowerCase();
+
+    body.innerHTML = entries.map(p => {
+      const scannedCount = Object.values(p.scanned || {}).reduce((a, v) => a + (v.matched?.length || 0), 0);
+      const missingCount  = (p.missing || []).length;
+      const isMe          = p.userEmail?.toLowerCase() === myEmail;
+      const savedLabel    = p.autoSaved ? `Auto-saved ${p.savedAt ? new Date(p.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : ''}` : `Paused ${p.pausedAt ? new Date(p.pausedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : ''}`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <span style="font-weight:600;font-size:13px;">${_esc(p.userName || p.userEmail || 'Unknown')}</span>
+          ${isMe ? '<span style="font-size:10px;color:var(--aio-purple);margin-left:6px;">(you)</span>' : ''}
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${_esc(savedLabel)}</span>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+            ${(p.countList||[]).length} product${(p.countList||[]).length!==1?'s':''} · ${scannedCount} scanned · ${missingCount} not yet scanned
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${isMe ? `<button class="btn btn-orange btn-xs" data-admin-resume="${_esc(p.userEmail)}">▶ Resume my count</button>` : ''}
+          <button class="btn btn-ghost btn-xs" data-admin-export="${_esc(p.userEmail)}" style="font-size:11px;">📥 Missing list</button>
+          <button class="btn btn-ghost btn-xs" data-admin-discard="${_esc(p.userEmail)}" style="color:var(--danger-text);font-size:11px;">✕ Discard</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire buttons
+    body.querySelectorAll('[data-admin-resume]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const paused = DB.getPausedAudit(btn.dataset.adminResume);
+        if (paused) _resumeAudit(paused);
+      });
+    });
+    body.querySelectorAll('[data-admin-export]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const paused = DB.getPausedAudit(btn.dataset.adminExport);
+        if (paused) _exportPausedMissing(paused);
+      });
+    });
+    body.querySelectorAll('[data-admin-discard]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const email = btn.dataset.adminDiscard;
+        const paused = DB.getPausedAudit(email);
+        const name = paused?.userName || email;
+        if (!confirm(`Discard ${name}'s count? This cannot be undone.`)) return;
+        DB.clearPausedAudit(email);
+        _renderAdminCounts();
+      });
+    });
+
+    // Wire refresh button
+    const refreshBtn = document.getElementById('btn-refresh-admin-counts');
+    if (refreshBtn && !refreshBtn._wired) {
+      refreshBtn._wired = true;
+      refreshBtn.addEventListener('click', _renderAdminCounts);
+    }
   }
 
   function _checkPausedAudit() {
-    const paused = DB.getPausedAudit();
+    const _ue = Auth.getUser()?.email;
+    const paused = _ue ? DB.getPausedAudit(_ue) : null;
     const banner  = document.getElementById('audit-paused-banner');
     const summary = document.getElementById('audit-paused-summary');
     if (!banner) return;
@@ -64,23 +136,14 @@ const Audit = (() => {
       discardBtn._wired = true;
       discardBtn.addEventListener('click', () => {
         if (!confirm('Discard the paused count? This cannot be undone.')) return;
-        DB.clearPausedAudit();
+        DB.clearPausedAudit(Auth.getUser()?.email||'x');
         banner.style.display = 'none';
       });
     }
   }
 
   function _getMissingFromPaused(paused) {
-    const missing = [];
-    (paused.countList || []).forEach(item => {
-      if (item.isNS) return;
-      const key     = item.product + '||' + (item.location || '');
-      const scanned = new Set((paused.scanned?.[key]?.matched || []).map(s => s.toUpperCase()));
-      (item.systemSerials || []).forEach(s => {
-        if (!scanned.has(s.toUpperCase())) missing.push({ serial: s, product: item.product, location: item.location });
-      });
-    });
-    return missing;
+    return paused.missing || _getMissingFromState(paused.countList, paused.scanned);
   }
 
   function _exportPausedMissing(paused) {
@@ -109,7 +172,7 @@ const Audit = (() => {
       _scanned[k] = { matched: new Set(v.matched || []), unexpected: v.unexpected || [] };
     });
 
-    DB.clearPausedAudit();
+    DB.clearPausedAudit(Auth.getUser()?.email||'x');
     document.getElementById('audit-paused-banner').style.display = 'none';
     document.getElementById('audit-setup-panel').style.display  = 'none';
     document.getElementById('audit-active-panel').style.display = '';
@@ -511,6 +574,35 @@ const Audit = (() => {
   }
 
   // ── submit a serial (auto-assigns to correct product) ─────────────────
+  // ── Auto-save ─────────────────────────────────────────────────────────
+  function _getMissingFromState(countList, scannedMap) {
+    const missing = [];
+    (countList || []).forEach(item => {
+      if (item.isNS) return;
+      const key = item.product + '||' + (item.location || '');
+      const scanned = new Set((scannedMap[key]?.matched || []).map(s => s.toUpperCase()));
+      (item.systemSerials || []).forEach(s => {
+        if (!scanned.has(s.toUpperCase())) missing.push({ serial: s, product: item.product, location: item.location });
+      });
+    });
+    return missing;
+  }
+
+  function _autoSave() {
+    const email = Auth.getUser()?.email;
+    if (!email || _phase !== 2) return;
+    const scannedSerializable = {};
+    Object.entries(_scanned).forEach(([k, v]) => {
+      scannedSerializable[k] = { matched: [...v.matched], unexpected: v.unexpected };
+    });
+    DB.savePausedAudit(email, {
+      countList: _countList, scanned: scannedSerializable, nsCounts: _nsCounts,
+      lostSet: [..._lostSet], missing: _getMissingFromState(_countList, scannedSerializable),
+      savedAt: new Date().toISOString(), userEmail: email,
+      userName: Auth.getName ? Auth.getName() : email, autoSaved: true,
+    });
+  }
+
   // ── Scanned serials log ─────────────────────────────────────────────
   function _updateScanLog() {
     const wrap    = document.getElementById('audit-scan-log-wrap');
@@ -557,6 +649,7 @@ const Audit = (() => {
       _updateSerialPanel(idx, item);
       _updatePanelStatus(idx);
       _updateScanLog();
+      _autoSave();
       return 'added';
     } else {
       // Not in count list — check if in stock at all
@@ -608,6 +701,7 @@ const Audit = (() => {
       _updateSerialPanel(idx, item);
       _updatePanelStatus(idx);
       _updateScanLog();
+      _autoSave();
     } else {
       // Unexpected — doesn't match any product in count list
       // Try to find which product panel it might belong to (best-effort: check all in-stock)
@@ -983,7 +1077,8 @@ const Audit = (() => {
 
     overlay.querySelector('#pause-modal-confirm').addEventListener('click', () => {
       overlay.remove();
-      DB.savePausedAudit({
+      const _pe = Auth.getUser()?.email || 'unknown';
+    DB.savePausedAudit(_pe, {
         countList:  _countList,
         scanned:    scannedSerializable,
         nsCounts:   _nsCounts,
@@ -1003,6 +1098,7 @@ const Audit = (() => {
   }
 
   function _reset() {
+    const _re = Auth.getUser()?.email; if (_re) DB.clearPausedAudit(_re);
     _countList = []; _scanned = {}; _nsCounts = {}; _lostSet = new Set();
     _serialLookup = {}; _phase = 1; _report = null;
     const logWrap = document.getElementById('audit-scan-log-wrap');
