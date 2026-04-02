@@ -383,12 +383,13 @@ const Audit = (() => {
         const pendingTotal = pendingMissing.length + (r.nsShortfalls||[]).reduce((a,ns)=>a+Math.max(0,ns.short-(ns.writtenOff||0)),0);
         const canResume = r._countList && r.missing > 0 && !r.completed; // snapshot exists and not fully matched
         const hasSnapshot = !!r._countList;
+        const isLocked = !!r.locked;
         return `<tr>
           <td style="color:var(--text-muted);font-size:11px;white-space:nowrap;">
             ${r.completedAt ? new Date(r.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : fmtDate(r.date)}<br>
             <span style="font-size:10px;">${r.completedAt ? new Date(r.completedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
           </td>
-          <td style="font-size:12px">${_esc(r.scope)}</td>
+          <td style="font-size:12px">${_esc(r.scope)} ${r.locked ? '<span style="font-size:10px;font-weight:700;color:#1a7a3c;background:#eaf7ee;border:1px solid #b8e0c4;border-radius:3px;padding:1px 5px;margin-left:4px;">✅ LOCKED</span>' : ''}</td>
           <td style="font-size:11px;color:var(--text-muted);">${_esc(r.completedBy || '—')}</td>
           <td>${r.expected}</td>
           <td style="color:#1a7a3c;font-weight:600">${r.matched}</td>
@@ -398,14 +399,38 @@ const Audit = (() => {
           <td style="text-align:right;white-space:nowrap;">
             <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
               ${hasSnapshot ? `<button class="btn btn-ghost btn-xs audit-history-view" data-idx="${idx}" style="font-size:11px;">📋 View report</button>` : ''}
-              ${hasSnapshot && r.missing > 0 ? `<button class="btn btn-ghost btn-xs audit-history-resume" data-idx="${idx}" style="font-size:11px;color:var(--aio-purple);">▶ Resume</button>` : ''}
-              ${isAdmin && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${hasPendingMissing ? `⚠ ${pendingTotal} pending` : '✓ All resolved'}</button>` : ''}
+              ${hasSnapshot && r.missing > 0 && !isLocked ? `<button class="btn btn-ghost btn-xs audit-history-resume" data-idx="${idx}" style="font-size:11px;color:var(--aio-purple);">▶ Resume</button>` : ''}
+              ${isAdmin && !isLocked && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${hasPendingMissing ? `⚠ ${pendingTotal} pending` : '✓ All resolved'}</button>` : ''}
               ${isAdmin ? `<button class="btn btn-ghost btn-xs audit-history-delete" data-idx="${idx}" style="font-size:11px;color:var(--danger-text);border-color:var(--danger-border);">🗑</button>` : ''}
+              ${isAdmin ? `<button class="btn btn-ghost btn-xs audit-history-lock" data-idx="${idx}" style="font-size:11px;${r.locked?'color:#1a7a3c;border-color:#b8e0c4;font-weight:600;':'color:var(--text-muted);'}" title="${r.locked?'Locked — click to unlock':'Lock this count as resolved'}">${r.locked ? '🔒' : '🔓'}</button>` : ''}
             </div>
           </td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
+
+    // Wire lock buttons
+    el.querySelectorAll('.audit-history-lock').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const recs = DB.getAuditRecords().slice().reverse();
+        const rec = recs[parseInt(btn.dataset.idx)];
+        if (!rec) return;
+        const allRecs = DB.getAuditRecords();
+        const ri = allRecs.findIndex(r => r.id === rec.id);
+        if (ri < 0) return;
+        if (rec.locked) {
+          if (!confirm(`Unlock "${rec.scope}"?\nEdits and write-offs will be possible again.`)) return;
+          allRecs[ri].locked = false; allRecs[ri].lockedBy = null; allRecs[ri].lockedAt = null;
+        } else {
+          if (!confirm(`Lock and mark "${rec.scope}" as fully resolved?\nNo further edits, write-offs, or resuming will be possible.`)) return;
+          allRecs[ri].locked = true;
+          allRecs[ri].lockedBy = Auth.getName ? Auth.getName() : (Auth.getUser()?.email || 'Unknown');
+          allRecs[ri].lockedAt = new Date().toISOString();
+        }
+        DB.save();
+        _renderHistory();
+      });
+    });
 
     // Wire delete buttons
     el.querySelectorAll('.audit-history-delete').forEach(btn => {
@@ -528,9 +553,12 @@ const Audit = (() => {
           ${record.completedBy ? `<span style="color:var(--text-muted);margin-left:8px;">by <strong>${_esc(record.completedBy)}</strong></span>` : ''}
           ${(record.writtenOffSerials||[]).length>0?`<span style="margin-left:8px;color:#9c2a00;">· ${(record.writtenOffSerials||[]).length} written off</span>`:''}
           ${(record.foundSerials||[]).length>0?`<span style="margin-left:8px;color:#1a7a3c;">· ${(record.foundSerials||[]).length} found</span>`:''}
+          ${record.locked?`<span style="margin-left:10px;font-size:11px;font-weight:700;color:#1a7a3c;background:#eaf7ee;border:1px solid #b8e0c4;border-radius:4px;padding:2px 8px;">🔒 LOCKED${record.lockedBy?' · '+_esc(record.lockedBy):''}</span>`:''}
         </div>
         <div style="display:flex;gap:8px;">
-          ${record.missing > 0 ? `<button class="btn btn-orange btn-sm" id="btn-hist-resume-count">▶ Resume count</button>` : ''}
+          ${record.missing > 0 && !record.locked ? `<button class="btn btn-orange btn-sm" id="btn-hist-resume-count">▶ Resume count</button>` : ''}
+          ${isAdmin && !record.locked ? `<button class="btn btn-ghost btn-sm" id="btn-hist-lock-count" style="color:#1a7a3c;border-color:#b8e0c4;">🔒 Lock & resolve</button>` : ''}
+          ${isAdmin && record.locked ? `<button class="btn btn-ghost btn-sm" id="btn-hist-unlock-count" style="color:var(--text-muted);">🔓 Unlock</button>` : ''}
           <button class="btn btn-ghost btn-sm" id="btn-hist-back-to-history">← Back to history</button>
         </div>`;
       reportSummaryEl.insertBefore(headerBanner, reportSummaryEl.firstChild);
@@ -545,6 +573,25 @@ const Audit = (() => {
       _renderHistory();
     });
 
+    const lockBtn = document.getElementById('btn-hist-lock-count');
+    if (lockBtn) lockBtn.addEventListener('click', () => {
+      if (!confirm(`Lock "${record.scope}" as fully resolved?\nNo further edits or write-offs will be possible.`)) return;
+      const recs = DB.getAuditRecords(); const ri = recs.findIndex(r => r.id === record.id);
+      if (ri > -1) { recs[ri].locked = true; recs[ri].lockedBy = Auth.getName?Auth.getName():(Auth.getUser()?.email||'Unknown'); recs[ri].lockedAt = new Date().toISOString(); Object.assign(record, recs[ri]); DB.save(); }
+      document.getElementById('audit-report-panel').style.display = 'none';
+      document.getElementById('audit-setup-panel').style.display = '';
+      _report = null; _renderHistory();
+    });
+    const unlockBtn = document.getElementById('btn-hist-unlock-count');
+    if (unlockBtn) unlockBtn.addEventListener('click', () => {
+      if (!confirm(`Unlock this count? Edits and write-offs will be possible again.`)) return;
+      const recs = DB.getAuditRecords(); const ri = recs.findIndex(r => r.id === record.id);
+      if (ri > -1) { recs[ri].locked = false; recs[ri].lockedBy = null; recs[ri].lockedAt = null; Object.assign(record, recs[ri]); DB.save(); }
+      document.getElementById('audit-report-panel').style.display = 'none';
+      document.getElementById('audit-setup-panel').style.display = '';
+      _report = null; _renderHistory();
+    });
+
     const resumeBtn = document.getElementById('btn-hist-resume-count');
     if (resumeBtn) resumeBtn.addEventListener('click', () => {
       if (!confirm(`Resume the count for "${record.scope}"?\n\nYou'll continue scanning from where it was completed. ${(record.writtenOffSerials||[]).length>0?`${(record.writtenOffSerials||[]).length} written-off serials will be excluded.`:''}`)) return;
@@ -552,7 +599,7 @@ const Audit = (() => {
     });
 
     // Add admin action buttons to each missing serial row in the report
-    if (isAdmin) {
+    if (isAdmin && !record.locked) {
       setTimeout(() => {
         document.querySelectorAll('.audit-mark-lost').forEach(btn => {
           const serial = btn.dataset.serial;
