@@ -357,6 +357,9 @@ const Audit = (() => {
     const cancelBtn = document.getElementById('btn-cancel-audit');
     if (cancelBtn && !cancelBtn._wired) { cancelBtn._wired = true; cancelBtn.addEventListener('click', _cancel); }
 
+    const pauseBtn = document.getElementById('btn-pause-audit');
+    if (pauseBtn && !pauseBtn._wired) { pauseBtn._wired = true; pauseBtn.addEventListener('click', _pause); }
+
     const camBtn = document.getElementById('btn-audit-camera');
     if (camBtn && !camBtn._wired) {
       camBtn._wired = true;
