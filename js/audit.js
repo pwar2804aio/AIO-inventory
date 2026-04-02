@@ -395,11 +395,26 @@ const Audit = (() => {
               ${hasSnapshot ? `<button class="btn btn-ghost btn-xs audit-history-view" data-idx="${idx}" style="font-size:11px;">📋 View report</button>` : ''}
               ${hasSnapshot && r.missing > 0 ? `<button class="btn btn-ghost btn-xs audit-history-resume" data-idx="${idx}" style="font-size:11px;color:var(--aio-purple);">▶ Resume</button>` : ''}
               ${isAdmin && (r.missing > 0 || (r.nsShortfalls||[]).some(ns => ns.short > (ns.writtenOff||0))) ? `<button class="btn btn-ghost btn-xs audit-history-review" data-idx="${idx}" style="font-size:11px;">${hasPendingMissing ? `⚠ ${pendingTotal} pending` : '✓ All resolved'}</button>` : ''}
+              ${isAdmin ? `<button class="btn btn-ghost btn-xs audit-history-delete" data-idx="${idx}" style="font-size:11px;color:var(--danger-text);border-color:var(--danger-border);">🗑</button>` : ''}
             </div>
           </td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
+
+    // Wire delete buttons
+    el.querySelectorAll('.audit-history-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const recs = DB.getAuditRecords().slice().reverse();
+        const rec = recs[parseInt(btn.dataset.idx)];
+        if (!rec) return;
+        if (!confirm(`Delete count record for "${rec.scope}"?\n\nThis removes the record only — no stock movements are affected.`)) return;
+        const allRecs = DB.getAuditRecords();
+        const ri = allRecs.findIndex(r => r.id === rec.id);
+        if (ri > -1) { allRecs.splice(ri, 1); DB.save(); }
+        _renderHistory();
+      });
+    });
 
     // Wire review buttons
     el.querySelectorAll('.audit-history-review').forEach(btn => {
