@@ -408,6 +408,19 @@ const Audit = (() => {
       });
     }
 
+    const logToggle = document.getElementById('btn-audit-log-toggle');
+    if (logToggle && !logToggle._wired) {
+      logToggle._wired = true;
+      logToggle.addEventListener('click', () => {
+        const logEl = document.getElementById('audit-scan-log');
+        if (!logEl) return;
+        const hidden = logEl.style.display === 'none';
+        logEl.style.display = hidden ? '' : 'none';
+        logToggle.textContent = hidden ? '▲ Hide list' : '▼ Show list';
+      });
+    }
+
+    _updateScanLog();
     if (input) input.focus();
   }
 
@@ -498,6 +511,31 @@ const Audit = (() => {
   }
 
   // ── submit a serial (auto-assigns to correct product) ─────────────────
+  // ── Scanned serials log ─────────────────────────────────────────────
+  function _updateScanLog() {
+    const wrap    = document.getElementById('audit-scan-log-wrap');
+    const logEl   = document.getElementById('audit-scan-log');
+    const countEl = document.getElementById('audit-scan-log-count');
+    if (!wrap || !logEl) return;
+
+    // Gather all scanned serials across all panels (matched only — not unexpected)
+    const all = [];
+    Object.entries(_scanned).forEach(([key, state]) => {
+      const item = _countList.find(i => _key(i) === key);
+      state.matched.forEach(s => all.push({ serial: s, product: item?.product || '' }));
+    });
+
+    if (all.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    if (countEl) countEl.textContent = all.length;
+
+    // Render newest-first
+    const reversed = [...all].reverse();
+    logEl.innerHTML = reversed.map(({ serial, product }) =>
+      `<span title="${_esc(product)}" style="font-family:var(--mono);font-size:11px;background:var(--bg-hover,rgba(0,0,0,.04));border:1px solid var(--border);border-radius:4px;padding:2px 7px;color:var(--success-text,#1a6b38);white-space:nowrap;">${_esc(serial)}</span>`
+    ).join('');
+  }
+
   // Core serial submission logic — used by both _submitSerial (single) and paste handler (bulk)
   // Returns: 'added' | 'duplicate' | 'ns' | 'not-in-count' | 'unknown'
   function _submitSerialValue(raw) {
@@ -518,6 +556,7 @@ const Audit = (() => {
       const idx = _countList.indexOf(item);
       _updateSerialPanel(idx, item);
       _updatePanelStatus(idx);
+      _updateScanLog();
       return 'added';
     } else {
       // Not in count list — check if in stock at all
@@ -965,6 +1004,12 @@ const Audit = (() => {
   function _reset() {
     _countList = []; _scanned = {}; _nsCounts = {}; _lostSet = new Set();
     _serialLookup = {}; _phase = 1; _report = null;
+    const logWrap = document.getElementById('audit-scan-log-wrap');
+    if (logWrap) logWrap.style.display = 'none';
+    const logEl = document.getElementById('audit-scan-log');
+    if (logEl) logEl.innerHTML = '';
+    const logToggle = document.getElementById('btn-audit-log-toggle');
+    if (logToggle) { logToggle.textContent = '▲ Hide list'; logToggle._wired = false; }
     document.getElementById('audit-setup-panel').style.display  = '';
     document.getElementById('audit-active-panel').style.display = 'none';
     document.getElementById('audit-report-panel').style.display = 'none';
