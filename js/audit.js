@@ -121,7 +121,21 @@ const Audit = (() => {
     const submit = document.getElementById('btn-audit-submit');
     if (input) { input.disabled = false; input.value = ''; }
     if (!input?._wired) {
-      if (input) { input._wired = true; input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } }); }
+      if (input) {
+        input._wired = true;
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } });
+        input.addEventListener('paste', e => {
+          e.preventDefault();
+          const text = (e.clipboardData || window.clipboardData).getData('text');
+          const serials = text.split(/[,\n\r\t]+/).map(s => s.trim()).filter(Boolean);
+          if (serials.length <= 1) { input.value = serials[0] || ''; return; }
+          let added = 0, skipped = 0;
+          serials.forEach(s => { const r = _submitSerialValue(s); if (r === 'added') added++; else skipped++; });
+          input.value = '';
+          const fb = document.getElementById('audit-scan-feedback');
+          if (fb) { fb.textContent = `Pasted ${serials.length} serials — ${added} added${skipped > 0 ? ', ' + skipped + ' skipped/unknown' : ''}`; fb.style.color = skipped > 0 ? 'var(--aio-orange-dark,#c05000)' : 'var(--success-text,#1a6b38)'; setTimeout(() => { fb.textContent = ''; fb.style.color = ''; }, 3000); }
+        });
+      }
       if (submit) submit.addEventListener('click', _submitSerial);
     }
     const finBtn = document.getElementById('btn-finish-audit');
@@ -348,6 +362,32 @@ const Audit = (() => {
       input._wired = true;
       input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _submitSerial(); } });
       submit.addEventListener('click', _submitSerial);
+
+      // Paste handler — supports comma/newline/tab separated serials (CSV, column copy, etc.)
+      input.addEventListener('paste', e => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const serials = text.split(/[,\n\r\t]+/).map(s => s.trim()).filter(Boolean);
+        if (serials.length <= 1) {
+          // Single value — just insert it and let user submit normally
+          input.value = serials[0] || '';
+          return;
+        }
+        // Multiple values — submit each one
+        let added = 0, skipped = 0;
+        serials.forEach(s => {
+          const result = _submitSerialValue(s);
+          if (result === 'added') added++;
+          else skipped++;
+        });
+        input.value = '';
+        const fb = document.getElementById('audit-scan-feedback');
+        if (fb) {
+          fb.textContent = `Pasted ${serials.length} serials — ${added} added${skipped > 0 ? ', ' + skipped + ' skipped/unknown' : ''}`;
+          fb.style.color = skipped > 0 ? 'var(--aio-orange-dark, #c05000)' : 'var(--success-text, #1a6b38)';
+          setTimeout(() => { fb.textContent = ''; fb.style.color = ''; }, 3000);
+        }
+      });
     }
 
     const finBtn = document.getElementById('btn-finish-audit');
@@ -458,6 +498,42 @@ const Audit = (() => {
   }
 
   // ── submit a serial (auto-assigns to correct product) ─────────────────
+  // Core serial submission logic — used by both _submitSerial (single) and paste handler (bulk)
+  // Returns: 'added' | 'duplicate' | 'ns' | 'not-in-count' | 'unknown'
+  function _submitSerialValue(raw) {
+    if (_phase !== 2 || !raw) return 'unknown';
+    const key = raw.trim().toUpperCase();
+    if (!key) return 'unknown';
+
+    if (key.startsWith('NS-')) return 'ns';
+
+    // Already scanned?
+    const alreadyIn = Object.values(_scanned).find(s => s.matched.has(key) || s.unexpected.find(u => u.toUpperCase() === key));
+    if (alreadyIn) return 'duplicate';
+
+    const item = _serialLookup[key];
+    if (item) {
+      const k = _key(item);
+      _scanned[k].matched.add(key);
+      const idx = _countList.indexOf(item);
+      _updateSerialPanel(idx, item);
+      _updatePanelStatus(idx);
+      return 'added';
+    } else {
+      // Not in count list — check if in stock at all
+      const allRow = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key && r.status === 'in-stock');
+      if (allRow) return 'not-in-count';
+      // Truly unknown — add as unexpected to first serialised product
+      const firstSerial = _countList.find(i => !i.isNS);
+      if (firstSerial) {
+        _scanned[_key(firstSerial)].unexpected.push(raw.trim());
+        const idx = _countList.indexOf(firstSerial);
+        _updateSerialPanel(idx, firstSerial);
+      }
+      return 'unknown';
+    }
+  }
+
   function _submitSerial() {
     if (_phase !== 2) return;
     const input    = document.getElementById('audit-serial-input');
