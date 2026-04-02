@@ -216,7 +216,7 @@
       <button class="nav-btn" data-view="reports">Reports</button>
       <button class="nav-btn" data-view="lookup">Serial Lookup</button>
       <button class="nav-btn" data-view="history">History</button>
-      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v78</span>
+      <span style="font-size:11px;color:rgba(255,255,255,0.45);margin-left:auto;padding-right:4px;letter-spacing:0.5px;">v79</span>
     </nav>
   </header>
 
@@ -255,6 +255,17 @@
     </div>
 
     <!-- PHASE 1: Build count list (setup) -->
+    <!-- Admin: all ongoing/paused counts (shown to admins only) -->
+    <div id="audit-admin-panel" style="display:none;margin-bottom:1rem;">
+      <div class="panel" style="border:1.5px solid var(--aio-purple-light,#c4b8f0);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="panel-title" style="margin:0;color:var(--aio-purple);">👥 Active counts (all users)</div>
+          <button class="btn btn-ghost btn-xs" id="btn-refresh-admin-counts">↻ Refresh</button>
+        </div>
+        <div id="audit-admin-counts-body"><div style="font-size:13px;color:var(--text-muted);">No active counts</div></div>
+      </div>
+    </div>
+
     <!-- Paused audit resume banner -->
     <div id="audit-paused-banner" style="display:none;margin-bottom:1rem;">
       <div class="panel" style="border:2px solid #f0d880;background:#fffdf0;">
@@ -1085,14 +1096,14 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=78"></script>
-<script src="js/auth-ui.js?v=78"></script>
-<script src="js/scanner.js?v=78"></script>
-<script src="js/db.js?v=78"></script>
-<script src="js/inventory.js?v=78"></script>
-<script src="js/reports.js?v=78"></script>
-<script src="js/ui.js?v=78"></script>
-<script src="js/audit.js?v=78"></script>
-<script src="js/app.js?v=78"></script>
+<script src="js/auth.js?v=79"></script>
+<script src="js/auth-ui.js?v=79"></script>
+<script src="js/scanner.js?v=79"></script>
+<script src="js/db.js?v=79"></script>
+<script src="js/inventory.js?v=79"></script>
+<script src="js/reports.js?v=79"></script>
+<script src="js/ui.js?v=79"></script>
+<script src="js/audit.js?v=79"></script>
+<script src="js/app.js?v=79"></script>
 </body>
 </html>
