@@ -646,16 +646,18 @@ const Audit = (() => {
         recs[ri].writtenOffSerials.push(serial);
         const info = Inventory.getAllSerialRows().find(r=>r.serial.toUpperCase()===serial.toUpperCase())||{};
         DB.addMovement({ id:Date.now()+Math.random(), type:'OUT', product:info.product||record.scope, category:info.category||'', location:info.location||'', serials:[serial], customer:'Lost Stock — Count Write-off', by:Auth.getName?Auth.getName():'', ref:`Audit: ${record.scope} (${fmtDate(record.date)})`, date:now, isLost:true });
-        if (singleBtn) { singleBtn.textContent='✓ Written off'; singleBtn.disabled=true; singleBtn.style.color='#888'; const rowEl=document.getElementById(`audit-row-${serial.replace(/[^a-z0-9]/gi,'_')}`); if(rowEl){rowEl.classList.remove('audit-row-missing');const b=rowEl.querySelector('.audit-badge');if(b){b.className='audit-badge';b.style.cssText='background:#f5d8d8;color:#9c2a00;';b.textContent='🗑 Written off';}} }
       }
     });
     recs[ri].lost = (recs[ri].writtenOffSerials||[]).length;
+    // Always recalculate missing/matched so reopening shows correct state
+    const _woSet = new Set((recs[ri].writtenOffSerials||[]).map(s=>s.toUpperCase()));
+    const _fSet  = new Set((recs[ri].foundSerials||[]).map(s=>s.toUpperCase()));
+    recs[ri].missing = (recs[ri].missingSerials||[]).filter(s => !_woSet.has(s.toUpperCase()) && !_fSet.has(s.toUpperCase())).length;
+    recs[ri].matched = recs[ri].expected - recs[ri].missing;
     Object.assign(record, recs[ri]);
     DB.save();
-    if (!singleBtn) {
-      // Bulk write-off — refresh the view
-      _viewHistoricalReport(record);
-    }
+    // Always refresh the full report view so state is immediately correct
+    _viewHistoricalReport(record);
   }
 
   function _resumeFromRecord(record) {
