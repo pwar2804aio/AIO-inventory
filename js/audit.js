@@ -604,21 +604,17 @@ const Audit = (() => {
     });
 
     // Add admin action buttons to each missing serial row in the report
-    if (isAdmin) { // write-off allowed even on locked counts
-      setTimeout(() => {
+    if (isAdmin) {
+      // Wire write-off buttons — works on locked AND unlocked counts
+      function _wireHistWriteOff() {
         document.querySelectorAll('.audit-mark-lost').forEach(btn => {
           const serial = btn.dataset.serial;
-          // Override the default write-off to also update the historical record
           btn.onclick = (e) => {
             e.stopPropagation();
             if (!confirm(`Write off "${serial}" as permanently lost?\nThis removes it from inventory.`)) return;
             _histWriteOff([serial], record, btn);
           };
         });
-        document.querySelectorAll('.audit-remove-unexpected').forEach(btn => {
-          if (btn._wired) return; // already wired by _wireReportButtons
-        });
-
         document.querySelectorAll('.audit-write-off-product').forEach(btn => {
           btn.onclick = (e) => {
             e.stopPropagation();
@@ -631,7 +627,9 @@ const Audit = (() => {
             btn.remove();
           };
         });
-      }, 100);
+      }
+      _wireHistWriteOff(); // wire immediately
+      requestAnimationFrame(_wireHistWriteOff); // and after paint to catch any late renders
     }
   }
 
