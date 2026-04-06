@@ -604,7 +604,7 @@ const Audit = (() => {
     });
 
     // Add admin action buttons to each missing serial row in the report
-    if (isAdmin && !record.locked) {
+    if (isAdmin) { // write-off allowed even on locked counts
       setTimeout(() => {
         document.querySelectorAll('.audit-mark-lost').forEach(btn => {
           const serial = btn.dataset.serial;
@@ -635,30 +635,51 @@ const Audit = (() => {
     }
   }
 
+  // ── Central write-off function — works on locked AND unlocked counts ────
   function _histWriteOff(serials, record, singleBtn) {
     const now = new Date().toISOString();
+    const by  = Auth.getName ? Auth.getName() : (Auth.getUser()?.email || '');
     const recs = DB.getAuditRecords();
-    const ri = recs.findIndex(r => r.id === record.id);
-    if (ri < 0) return;
+    const ri   = recs.findIndex(r => r.id === record.id);
+    if (!recs[ri].writtenOffSerials) recs[ri].writtenOffSerials = [];
+
     serials.forEach(serial => {
-      if (!recs[ri].writtenOffSerials) recs[ri].writtenOffSerials = [];
-      if (!recs[ri].writtenOffSerials.includes(serial)) {
+      const key = serial.toUpperCase();
+      // Create OUT movement (source of truth for stock removal)
+      if (!Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key && r.status !== 'in-stock')) {
+        const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key) || {};
+        DB.addMovement({
+          id: Date.now() + Math.random(), type: 'OUT',
+          product: info.product || recs[ri].scope.split(' @ ')[0],
+          category: info.category || '',
+          location: info.location || recs[ri].scope.split(' @ ')[1] || '',
+          serials: [serial],
+          customer: 'Lost Stock — Count Write-off',
+          by,
+          ref: `Audit: ${recs[ri].scope} (${new Date(recs[ri].date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})})`,
+          date: now, isLost: true,
+        });
+      }
+      // Record in writtenOffSerials
+      if (!recs[ri].writtenOffSerials.some(s => s.toUpperCase() === key)) {
         recs[ri].writtenOffSerials.push(serial);
-        const info = Inventory.getAllSerialRows().find(r=>r.serial.toUpperCase()===serial.toUpperCase())||{};
-        DB.addMovement({ id:Date.now()+Math.random(), type:'OUT', product:info.product||record.scope, category:info.category||'', location:info.location||'', serials:[serial], customer:'Lost Stock — Count Write-off', by:Auth.getName?Auth.getName():'', ref:`Audit: ${record.scope} (${fmtDate(record.date)})`, date:now, isLost:true });
       }
     });
-    recs[ri].lost = (recs[ri].writtenOffSerials||[]).length;
-    // Always recalculate missing/matched so reopening shows correct state
-    const _woSet = new Set((recs[ri].writtenOffSerials||[]).map(s=>s.toUpperCase()));
-    const _fSet  = new Set((recs[ri].foundSerials||[]).map(s=>s.toUpperCase()));
-    recs[ri].missing = (recs[ri].missingSerials||[]).filter(s => !_woSet.has(s.toUpperCase()) && !_fSet.has(s.toUpperCase())).length;
+
+    // Recalculate counts
+    const woSet = new Set(recs[ri].writtenOffSerials.map(s => s.toUpperCase()));
+    const fSet  = new Set((recs[ri].foundSerials||[]).map(s => s.toUpperCase()));
+    recs[ri].missing = (recs[ri].missingSerials||[]).filter(s => !woSet.has(s.toUpperCase()) && !fSet.has(s.toUpperCase())).length;
     recs[ri].matched = recs[ri].expected - recs[ri].missing;
+    recs[ri].lost    = recs[ri].writtenOffSerials.length;
+
     Object.assign(record, recs[ri]);
     DB.save();
-    // Always refresh the full report view so state is immediately correct
+
+    // Always refresh the report
     _viewHistoricalReport(record);
   }
+
 
   function _resumeFromRecord(record) {
     if (!record._countList || !record._scanned) return;
@@ -1746,18 +1767,24 @@ const Audit = (() => {
         if (rowEl) { rowEl.classList.remove('audit-row-missing'); const b=rowEl.querySelector('.audit-badge'); if(b){b.className='audit-badge';b.style.cssText='background:#f5d8d8;color:#9c2a00;';b.textContent='🗑 Written off';} }
       }
     });
-    // Patch DB record — also store writtenOffSerials so reopening shows correct state
+    // Patch DB record — store writtenOffSerials and recalculate
     const records = DB.getAuditRecords();
-    if (records.length) {
-      const last = records[records.length-1];
-      last.lost = _lostSet.size;
-      if (!last.writtenOffSerials) last.writtenOffSerials = [];
-      serials.forEach(s => { if (!last.writtenOffSerials.includes(s)) last.writtenOffSerials.push(s); });
-      // Recalculate missing/matched
-      const _woSet2 = new Set((last.writtenOffSerials||[]).map(x=>x.toUpperCase()));
-      const _fSet2  = new Set((last.foundSerials||[]).map(x=>x.toUpperCase()));
-      last.missing = (last.missingSerials||[]).filter(x => !_woSet2.has(x.toUpperCase()) && !_fSet2.has(x.toUpperCase())).length;
-      last.matched = last.expected - last.missing;
+    // Use the record linked to this report if viewing historical
+    const _patchRec = _report?._historicalRecord
+      ? records.find(r => r.id === _report._historicalRecord.id)
+      : records[records.length-1];
+    if (_patchRec) {
+      if (!_patchRec.writtenOffSerials) _patchRec.writtenOffSerials = [];
+      serials.forEach(s => {
+        if (!_patchRec.writtenOffSerials.some(x => x.toUpperCase() === s.toUpperCase()))
+          _patchRec.writtenOffSerials.push(s);
+      });
+      _patchRec.lost = _patchRec.writtenOffSerials.length;
+      const _woSet2 = new Set(_patchRec.writtenOffSerials.map(x=>x.toUpperCase()));
+      const _fSet2  = new Set((_patchRec.foundSerials||[]).map(x=>x.toUpperCase()));
+      _patchRec.missing = (_patchRec.missingSerials||[]).filter(x => !_woSet2.has(x.toUpperCase()) && !_fSet2.has(x.toUpperCase())).length;
+      _patchRec.matched = _patchRec.expected - _patchRec.missing;
+      if (_report?._historicalRecord) Object.assign(_report._historicalRecord, _patchRec);
       DB.save();
     }
     // Clear auto-saved audit — count is complete
