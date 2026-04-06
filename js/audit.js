@@ -634,47 +634,56 @@ const Audit = (() => {
   }
 
   // ── Central write-off function — works on locked AND unlocked counts ────
+  // Single-save approach: build all changes first, then save ONCE to avoid race conditions
   function _histWriteOff(serials, record, singleBtn) {
     const now = new Date().toISOString();
     const by  = Auth.getName ? Auth.getName() : (Auth.getUser()?.email || '');
-    const recs = DB.getAuditRecords();
+    const data = DB.getData();
+    const recs = data.auditRecords || DB.getAuditRecords();
     const ri   = recs.findIndex(r => r.id === record.id);
+    if (ri < 0) return;
     if (!recs[ri].writtenOffSerials) recs[ri].writtenOffSerials = [];
 
+    // Step 1: push movements directly into _data without triggering a save
     serials.forEach(serial => {
       const key = serial.toUpperCase();
-      // Create OUT movement (source of truth for stock removal)
-      if (!Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key && r.status !== 'in-stock')) {
-        const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key) || {};
-        DB.addMovement({
-          id: Date.now() + Math.random(), type: 'OUT',
-          product: info.product || recs[ri].scope.split(' @ ')[0],
-          category: info.category || '',
-          location: info.location || recs[ri].scope.split(' @ ')[1] || '',
-          serials: [serial],
-          customer: 'Lost Stock — Count Write-off',
-          by,
-          ref: `Audit: ${recs[ri].scope} (${new Date(recs[ri].date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})})`,
-          date: now, isLost: true,
-        });
-      }
+      const info = Inventory.getAllSerialRows().find(r => r.serial.toUpperCase() === key) || {};
+      // Only write off if still in stock
+      const stillInStock = data.movements.filter(m => m.serials && m.serials.some(s => s.toUpperCase() === key));
+      const outCount = stillInStock.filter(m => m.type === 'OUT').length;
+      const inCount  = stillInStock.filter(m => m.type === 'IN').length;
+      if (outCount >= inCount && outCount > 0) return; // already fully written off
+
+      data.movements.push({
+        id: Date.now() + Math.random(), type: 'OUT',
+        product: info.product || recs[ri].scope.split(' @ ')[0],
+        category: info.category || '',
+        location: info.location || recs[ri].scope.split(' @ ')[1] || '',
+        serials: [serial],
+        customer: 'Lost Stock — Count Write-off',
+        by,
+        ref: `Audit: ${recs[ri].scope} (${new Date(recs[ri].date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})})`,
+        date: now, isLost: true,
+      });
+
       // Record in writtenOffSerials
       if (!recs[ri].writtenOffSerials.some(s => s.toUpperCase() === key)) {
         recs[ri].writtenOffSerials.push(serial);
       }
     });
 
-    // Recalculate counts
+    // Step 2: recalculate counts
     const woSet = new Set(recs[ri].writtenOffSerials.map(s => s.toUpperCase()));
     const fSet  = new Set((recs[ri].foundSerials||[]).map(s => s.toUpperCase()));
     recs[ri].missing = (recs[ri].missingSerials||[]).filter(s => !woSet.has(s.toUpperCase()) && !fSet.has(s.toUpperCase())).length;
     recs[ri].matched = recs[ri].expected - recs[ri].missing;
     recs[ri].lost    = recs[ri].writtenOffSerials.length;
 
+    // Step 3: ONE single save with all changes together
     Object.assign(record, recs[ri]);
     DB.save();
 
-    // Always refresh the report
+    // Step 4: refresh report
     _viewHistoricalReport(record);
   }
 
