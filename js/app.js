@@ -1031,7 +1031,16 @@
         row.qty = freshQty;
         if (!row.qty || row.qty < 1) { UI.showAlert(`Enter a quantity for "${row.product}".`, 'error'); return; }
         if (row.qty > inStock.length) { UI.showAlert(`Only ${inStock.length} unit${inStock.length!==1?'s':''} of "${row.product}" available.`, 'error'); return; }
-        row.serials = inStock.slice(0, row.qty); // row.qty is now guaranteed to be a valid positive integer
+        // Exclude serials already staged for pending deployment
+        const _pendingSet = new Set(
+          DB.getPendingDeployments().flatMap(p => (p.serials||[]).map(s => s.toUpperCase()))
+        );
+        const _available = inStock.filter(s => !_pendingSet.has(s.toUpperCase()));
+        if (_available.length < row.qty) {
+          UI.showAlert(`Only ${_available.length} unstaged unit${_available.length!==1?'s':''} of "${row.product}" available (${inStock.length - _available.length} already staged).`, 'error');
+          return;
+        }
+        row.serials = _available.slice(0, row.qty); // row.qty is now guaranteed to be a valid positive integer
       } else {
         if (row.serials.length === 0) { UI.showAlert(`Add at least one serial for "${row.product}".`, 'error'); return; }
       }
