@@ -1108,7 +1108,7 @@
     if (view === 'rma')        UI.renderRMA();
     if (view === 'totalloss')  UI.renderTotalLoss();
     if (view === 'rmatldisp')  UI.renderRmaTlDispatched();
-    if (view === 'reports')    Reports.render();
+    if (view === 'reports')    { Reports.render(); Reports.renderWrittenOff(); }
     if (view === 'stocktake')  Audit.init();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
