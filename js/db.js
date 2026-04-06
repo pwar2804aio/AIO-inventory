@@ -11,6 +11,7 @@ const DB_CONFIG = {
 };
 
 const DB = (() => {
+  let _pendingWrite = false;
   let _data  = { movements: [], thresholds: {}, shipments: [], serialCosts: {}, serialConditions: {}, customSuppliers: [], customLocations: [], orders: [], suppliers: [], productRecords: [], auditRecords: [], pendingUsers: {}, pendingDeployments: [], pausedAudits: {} };
   let _db    = null;
   let _ready = false;
@@ -36,6 +37,7 @@ const DB = (() => {
       // Real-time listener — keeps all users in sync
       onSnapshot(docRef, snap => {
         if (!snap.exists()) return;
+        if (_pendingWrite) return;
         const d = snap.data();
         _data = { movements: d.movements||[], thresholds: d.thresholds||{}, shipments: d.shipments||[], serialCosts: d.serialCosts||{}, serialConditions: d.serialConditions||{}, purchaseOrders: d.purchaseOrders||{}, serialPOs: d.serialPOs||{}, customSuppliers: d.customSuppliers||[], customLocations: d.customLocations||[], orders: d.orders||[], suppliers: d.suppliers||[], productRecords: d.productRecords||[], auditRecords: d.auditRecords||[], pendingUsers: d.pendingUsers||{}, pendingDeployments: d.pendingDeployments||[], pausedAudits: d.pausedAudits||{} };
         if (typeof _currentView !== 'undefined') _refreshView();
@@ -61,6 +63,7 @@ const DB = (() => {
       const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
       await setDoc(doc(_db, 'inventory', 'main'), _data);
     } catch(e) { localStorage.setItem('aio_inventory_v2', JSON.stringify(_data)); }
+    finally { setTimeout(() => { _pendingWrite = false; }, 1000); }
   }
 
   function onReady(fn)          { if (_ready) fn(); else _onReadyCallbacks.push(fn); }
