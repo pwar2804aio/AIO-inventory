@@ -546,17 +546,24 @@ const Reports = (() => {
     const fmtMoney = v => v ? '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—';
     const fmtDate  = d => d ? new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '—';
 
+    // Deduplicate by serial — only count each serial once (keep earliest entry)
+    const seenSerials = new Set();
     const rows = [];
-    allMoves.forEach(m => {
+    // Sort movements oldest first so we keep the original write-off, not duplicates
+    const sortedMoves = [...allMoves].sort((a,b) => new Date(a.date) - new Date(b.date));
+    sortedMoves.forEach(m => {
       (m.serials||[]).forEach(serial => {
+        const key = serial.toUpperCase();
+        if (seenSerials.has(key)) return; // skip duplicates
+        seenSerials.add(key);
         const auditRec = auditRecs.find(r =>
-          (r.writtenOffSerials||[]).some(s => s.toUpperCase() === serial.toUpperCase())
+          (r.writtenOffSerials||[]).some(s => s.toUpperCase() === key)
         );
         const serialCosts = DB.getData().serialCosts || {};
         const cost = serialCosts[serial] || serialCosts[serial.toUpperCase()] || m.cost || 0;
         rows.push({
           serial: serial.startsWith('NS-') ? '(No serial)' : serial,
-          product: m.product || '—',
+          product: m.product && m.product !== 'Unknown' ? m.product : (auditRec?.scope?.split(' @ ')[0] || m.product || '—'),
           location: m.location || '—',
           date: m.date,
           by: m.by || '—',
@@ -568,6 +575,7 @@ const Reports = (() => {
       });
     });
 
+    // Display newest first
     rows.sort((a,b) => new Date(b.date) - new Date(a.date));
 
     const totalUnits = rows.length;
