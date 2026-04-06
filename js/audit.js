@@ -1746,9 +1746,20 @@ const Audit = (() => {
         if (rowEl) { rowEl.classList.remove('audit-row-missing'); const b=rowEl.querySelector('.audit-badge'); if(b){b.className='audit-badge';b.style.cssText='background:#f5d8d8;color:#9c2a00;';b.textContent='🗑 Written off';} }
       }
     });
-    // Patch DB record
+    // Patch DB record — also store writtenOffSerials so reopening shows correct state
     const records = DB.getAuditRecords();
-    if (records.length) { records[records.length-1].lost = _lostSet.size; DB.save(); }
+    if (records.length) {
+      const last = records[records.length-1];
+      last.lost = _lostSet.size;
+      if (!last.writtenOffSerials) last.writtenOffSerials = [];
+      serials.forEach(s => { if (!last.writtenOffSerials.includes(s)) last.writtenOffSerials.push(s); });
+      // Recalculate missing/matched
+      const _woSet2 = new Set((last.writtenOffSerials||[]).map(x=>x.toUpperCase()));
+      const _fSet2  = new Set((last.foundSerials||[]).map(x=>x.toUpperCase()));
+      last.missing = (last.missingSerials||[]).filter(x => !_woSet2.has(x.toUpperCase()) && !_fSet2.has(x.toUpperCase())).length;
+      last.matched = last.expected - last.missing;
+      DB.save();
+    }
     // Clear auto-saved audit — count is complete
     const _ce = Auth.getUser()?.email; if (_ce) DB.clearPausedAudit(_ce);
   }
