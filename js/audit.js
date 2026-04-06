@@ -575,6 +575,7 @@ const Audit = (() => {
       document.getElementById('audit-setup-panel').style.display  = '';
       _report = null;
       _renderHistory();
+      _checkPausedAudit(); // re-show resume banner if there's a paused count
     });
 
     const lockBtn = document.getElementById('btn-hist-lock-count');
@@ -688,6 +689,9 @@ const Audit = (() => {
     }
 
     _buildSerialLookup();
+
+    // Immediately save so progress is preserved even before scanning
+    _autoSave();
 
     // Switch to active panel
     document.getElementById('audit-setup-panel').style.display  = 'none';
@@ -1565,7 +1569,29 @@ const Audit = (() => {
 
   function _wireReportButtons() {
     const newBtn = document.getElementById('btn-new-count');
-    if (newBtn && !newBtn._wired) { newBtn._wired = true; newBtn.addEventListener('click', _reset); }
+    if (newBtn && !newBtn._wired) {
+      newBtn._wired = true;
+      newBtn.addEventListener('click', () => {
+        // If currently in an active count (phase 2), save progress before resetting
+        if (_phase === 2 && _countList.length > 0) {
+          const email = Auth.getUser()?.email;
+          if (email) {
+            const scannedSerializable = {};
+            Object.entries(_scanned).forEach(([k, v]) => {
+              scannedSerializable[k] = { matched: [...v.matched], unexpected: v.unexpected };
+            });
+            DB.savePausedAudit(email, {
+              countList: _countList, scanned: scannedSerializable,
+              nsCounts: _nsCounts, lostSet: [..._lostSet],
+              missing: _getMissingFromState(_countList, scannedSerializable),
+              savedAt: new Date().toISOString(), userEmail: email,
+              userName: Auth.getName ? Auth.getName() : email, autoSaved: true,
+            });
+          }
+        }
+        _reset();
+      });
+    }
     const exportBtn = document.getElementById('btn-audit-export-report');
     if (exportBtn && !exportBtn._wired) { exportBtn._wired = true; exportBtn.addEventListener('click', _exportCSV); }
 
