@@ -529,5 +529,121 @@ const Reports = (() => {
       </div>`;
   }
 
-  return { render, exportAll };
+
+  // ── Written-off stock report ─────────────────────────────────────────
+  function renderWrittenOff() {
+    const el = document.getElementById('report-writtenoff');
+    if (!el) return;
+
+    const allMoves = DB.getData().movements.filter(m => m.type === 'OUT' && m.isLost === true);
+    const auditRecs = DB.getAuditRecords();
+
+    if (!allMoves.length) {
+      el.innerHTML = '<div class="empty" style="padding:2rem;text-align:center;color:var(--text-muted);">No written-off stock found</div>';
+      return;
+    }
+
+    const fmtMoney = v => v ? '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—';
+    const fmtDate  = d => d ? new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '—';
+
+    const rows = [];
+    allMoves.forEach(m => {
+      (m.serials||[]).forEach(serial => {
+        const auditRec = auditRecs.find(r =>
+          (r.writtenOffSerials||[]).some(s => s.toUpperCase() === serial.toUpperCase())
+        );
+        const serialCosts = DB.getData().serialCosts || {};
+        const cost = serialCosts[serial] || serialCosts[serial.toUpperCase()] || m.cost || 0;
+        rows.push({
+          serial: serial.startsWith('NS-') ? '(No serial)' : serial,
+          product: m.product || '—',
+          location: m.location || '—',
+          date: m.date,
+          by: m.by || '—',
+          ref: m.ref || '—',
+          auditScope: auditRec ? auditRec.scope : '—',
+          cost,
+          isNS: serial.startsWith('NS-'),
+        });
+      });
+    });
+
+    rows.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    const totalUnits = rows.length;
+    const totalValue = rows.reduce((a,r) => a+r.cost, 0);
+    const byProduct = {};
+    rows.forEach(r => {
+      if (!byProduct[r.product]) byProduct[r.product] = { count: 0, value: 0 };
+      byProduct[r.product].count++;
+      byProduct[r.product].value += r.cost;
+    });
+    const productRows = Object.entries(byProduct).sort((a,b) => b[1].count - a[1].count);
+
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+        <div class="svc-stat-card" style="background:#fef0ea;border-color:#f5c6b0;color:#9c2a00;flex:1;min-width:120px;">
+          <div class="svc-stat-count">${totalUnits}</div>
+          <div class="svc-stat-label">🗑 Total units written off</div>
+        </div>
+        <div class="svc-stat-card" style="background:#fef0ea;border-color:#f5c6b0;color:#9c2a00;flex:1;min-width:120px;">
+          <div class="svc-stat-count">${fmtMoney(totalValue)}</div>
+          <div class="svc-stat-label">💰 Total value written off</div>
+        </div>
+        <div class="svc-stat-card" style="background:#f5f0ff;border-color:#c4b8f0;color:var(--aio-purple);flex:1;min-width:120px;">
+          <div class="svc-stat-count">${productRows.length}</div>
+          <div class="svc-stat-label">📦 Products affected</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem;">
+        <div class="panel-title">By product</div>
+        <div class="table-wrap"><table class="product-stock-table">
+          <thead><tr><th>Product</th><th style="width:12%">Units</th><th style="width:18%">Value</th></tr></thead>
+          <tbody>${productRows.map(([product, data]) =>
+            `<tr><td style="font-weight:500">${product}</td><td style="color:#9c2a00;font-weight:600">${data.count}</td><td style="color:#9c2a00;font-weight:600">${fmtMoney(data.value)}</td></tr>`
+          ).join('')}</tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="panel-title" style="margin:0;">All written-off items</div>
+          <button class="btn btn-ghost btn-sm" id="btn-export-writtenoff">📥 Export CSV</button>
+        </div>
+        <div class="table-wrap"><table class="product-stock-table">
+          <thead><tr>
+            <th style="width:13%">Date</th>
+            <th style="width:18%">Serial</th>
+            <th style="width:20%">Product</th>
+            <th style="width:12%">Location</th>
+            <th style="width:12%">By</th>
+            <th style="width:25%">Audit count</th>
+          </tr></thead>
+          <tbody>${rows.map(r =>
+            `<tr>
+              <td style="font-size:12px;color:var(--text-muted)">${fmtDate(r.date)}</td>
+              <td style="font-family:var(--mono);font-size:11px;${r.isNS ? 'color:var(--text-muted);font-style:italic;' : ''}">${r.serial}</td>
+              <td style="font-size:12px">${r.product}</td>
+              <td style="font-size:12px">${r.location}</td>
+              <td style="font-size:12px">${r.by}</td>
+              <td style="font-size:11px;color:var(--text-muted)">${r.auditScope}</td>
+            </tr>`
+          ).join('')}</tbody>
+        </table></div>
+      </div>`;
+
+    document.getElementById('btn-export-writtenoff')?.addEventListener('click', () => {
+      const csv = [
+        ['Date','Serial','Product','Location','Written off by','Audit count'],
+        ...rows.map(r => [fmtDate(r.date), r.serial, r.product, r.location, r.by, r.auditScope])
+      ].map(r => r.map(c => '"' + (c||'').toString().replace(/"/g,'""') + '"').join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = 'data:text/csv,' + encodeURIComponent(csv);
+      a.download = 'written-off-stock-' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+    });
+  }
+
+  return { render, exportAll, renderWrittenOff };
 })();
