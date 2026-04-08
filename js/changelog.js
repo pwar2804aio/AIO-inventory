@@ -149,3 +149,11 @@ const CHANGELOG = [
     ],
   },
 ];
+
+// Auto-update the version label in the nav bar from the latest changelog entry
+if (typeof CHANGELOG !== 'undefined' && CHANGELOG.length) {
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('app-version-label');
+    if (el) el.textContent = CHANGELOG[0].version;
+  });
+}
