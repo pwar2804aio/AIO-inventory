@@ -1121,7 +1121,7 @@
     if (view === 'stocktake')  Audit.init();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'shipment-history') UI.renderShipmentHistory();
-    if (view === 'changelog')        UI.renderChangelog();
+    if (view === 'changelog')        renderChangelog();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); _wireOutModeToggle(); }
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
