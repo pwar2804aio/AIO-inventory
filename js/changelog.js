@@ -150,10 +150,63 @@ var CHANGELOG = [
   },
 ];
 
-// Auto-update the version label in the nav bar from the latest changelog entry
-if (typeof CHANGELOG !== 'undefined' && CHANGELOG.length) {
-  document.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById('app-version-label');
-    if (el) el.textContent = CHANGELOG[0].version;
-  });
+// ── Standalone render function — no dependencies on UI IIFE ──────────────
+function renderChangelog() {
+  var container = document.getElementById('changelog-body');
+  if (!container) return;
+
+  if (!CHANGELOG || !CHANGELOG.length) {
+    container.innerHTML = '<div class="empty">No release notes available.</div>';
+    return;
+  }
+
+  function safe(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  var typeLabel = { 'new': 'New', 'improved': 'Improved', 'fixed': 'Fixed' };
+  var typeClass  = { 'new': 'cl-new', 'improved': 'cl-improved', 'fixed': 'cl-fixed' };
+
+  var html = '';
+  for (var i = 0; i < CHANGELOG.length; i++) {
+    var entry = CHANGELOG[i];
+    var d = new Date(entry.date + 'T00:00:00');
+    var dateStr = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    var isLatest = i === 0;
+
+    var changesHtml = '';
+    for (var j = 0; j < entry.changes.length; j++) {
+      var c = entry.changes[j];
+      var badge = typeClass[c.type] || 'cl-new';
+      var label = typeLabel[c.type] || c.type;
+      changesHtml += '<li class="cl-item">' +
+        '<span class="cl-badge ' + badge + '">' + label + '</span>' +
+        '<span class="cl-text">' + safe(c.text) + '</span>' +
+        '</li>';
+    }
+
+    html += '<div class="cl-entry' + (isLatest ? ' cl-entry-latest' : '') + '">' +
+      '<div class="cl-entry-header">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+          '<span class="cl-version">' + safe(entry.version) + '</span>' +
+          (isLatest ? '<span class="cl-latest-badge">Latest</span>' : '') +
+          '<span class="cl-entry-title">' + safe(entry.title) + '</span>' +
+        '</div>' +
+        '<span class="cl-date">' + dateStr + '</span>' +
+      '</div>' +
+      '<ul class="cl-list">' + changesHtml + '</ul>' +
+    '</div>';
+  }
+
+  container.innerHTML = html;
 }
+
+// Auto-update nav version label
+document.addEventListener('DOMContentLoaded', function() {
+  var el = document.getElementById('app-version-label');
+  if (el && CHANGELOG && CHANGELOG.length) el.textContent = CHANGELOG[0].version;
+});
