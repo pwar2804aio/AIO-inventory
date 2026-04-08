@@ -514,6 +514,10 @@ const Inventory = (() => {
       });
     });
     DB.updateShipment(id, { status: 'received', receivedAt: new Date().toISOString(), receivedBy: receivedBy || '', actualLocation: location });
+    // Also mark the linked purchase order as received
+    if (shipment.orderId) {
+      DB.updateOrder(shipment.orderId, { status: 'received', receivedAt: new Date().toISOString() });
+    }
   }
 
   // ── Stock Out ─────────────────────────────────────────────────────────
