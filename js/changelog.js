@@ -4,6 +4,23 @@
  */
 const CHANGELOG = [
   {
+    version: 'v91',
+    date: '2026-04-08',
+    title: 'Navigation Tidy-up — Catalog Group',
+    changes: [
+      { type: 'improved', text: 'Products and Suppliers consolidated under a new "Catalog" dropdown — keeps the top nav clean' },
+    ],
+  },
+  {
+    version: 'v90',
+    date: '2026-04-08',
+    title: 'Changelog / What's New Page',
+    changes: [
+      { type: 'new', text: 'What's New page added to the nav — shows full release history with version, date and colour-coded change badges' },
+      { type: 'new', text: 'changelog.js file introduced — updated with every deployment so users always see current release notes' },
+    ],
+  },
+  {
     version: 'v89',
     date: '2026-04-08',
     title: 'Shipment History & Document Uploads',
