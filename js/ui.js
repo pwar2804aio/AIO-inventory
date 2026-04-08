@@ -2185,38 +2185,5 @@ Items will remain in Stock Holding with no customer attached.`)) return;
   }
 
 
-  // ── Changelog ─────────────────────────────────────────────────────────
-  function renderChangelog() {
-    const container = document.getElementById('changelog-body');
-    if (!container) return;
-    if (typeof CHANGELOG === 'undefined' || !CHANGELOG.length) {
-      container.innerHTML = '<div class="empty">Release notes unavailable — try refreshing the page.</div>';
-      return;
-    }
-
-    const typeLabel = { new: 'New', improved: 'Improved', fixed: 'Fixed' };
-    const typeClass = { new: 'cl-new', improved: 'cl-improved', fixed: 'cl-fixed' };
-
-    container.innerHTML = CHANGELOG.map((entry, idx) => {
-      const dateStr = new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      return `<div class="cl-entry${idx === 0 ? ' cl-entry-latest' : ''}">
-        <div class="cl-entry-header">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span class="cl-version">${esc(entry.version)}</span>
-            ${idx === 0 ? '<span class="cl-latest-badge">Latest</span>' : ''}
-            <span class="cl-entry-title">${esc(entry.title)}</span>
-          </div>
-          <span class="cl-date">${dateStr}</span>
-        </div>
-        <ul class="cl-list">
-          ${entry.changes.map(c => `<li class="cl-item">
-            <span class="cl-badge ${typeClass[c.type] || 'cl-new'}">${typeLabel[c.type] || c.type}</span>
-            <span class="cl-text">${esc(c.text)}</span>
-          </li>`).join('')}
-        </ul>
-      </div>`;
-    }).join('');
-  }
-
-    return { showAlert, hideAlert, renderChangelog, renderDashboard, renderProductList, renderSupplierList, renderOrderList, renderTransitList, renderShipmentHistory, renderStockBreakdown, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
+    return { showAlert, hideAlert, renderDashboard, renderProductList, renderSupplierList, renderOrderList, renderTransitList, renderShipmentHistory, renderStockBreakdown, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
