@@ -187,8 +187,15 @@
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-view="dashboard">Dashboard</button>
-      <button class="nav-btn" data-view="products">Products</button>
-      <button class="nav-btn" data-view="suppliers">Suppliers</button>
+      <div class="nav-dropdown">
+        <button class="nav-btn nav-dropdown-toggle" data-dropdown="catalog-group">
+          Catalog <span class="nav-caret">▾</span>
+        </button>
+        <div class="nav-dropdown-menu" id="dd-catalog-group">
+          <button class="nav-dropdown-item" data-view="products">Products</button>
+          <button class="nav-dropdown-item" data-view="suppliers">Suppliers</button>
+        </div>
+      </div>
       <div class="nav-dropdown">
         <button class="nav-btn nav-dropdown-toggle" data-dropdown="orders-group">
           Orders <span class="nav-caret">▾</span>
@@ -1143,15 +1150,15 @@
   </section>
 
 </div>
-<script src="js/auth.js?v=90"></script>
-<script src="js/auth-ui.js?v=90"></script>
-<script src="js/scanner.js?v=90"></script>
-<script src="js/db.js?v=90"></script>
-<script src="js/inventory.js?v=90"></script>
-<script src="js/reports.js?v=90"></script>
-<script src="js/ui.js?v=90"></script>
-<script src="js/audit.js?v=90"></script>
-<script src="js/changelog.js?v=90"></script>
-<script src="js/app.js?v=90"></script>
+<script src="js/auth.js?v=91"></script>
+<script src="js/auth-ui.js?v=91"></script>
+<script src="js/scanner.js?v=91"></script>
+<script src="js/db.js?v=91"></script>
+<script src="js/inventory.js?v=91"></script>
+<script src="js/reports.js?v=91"></script>
+<script src="js/ui.js?v=91"></script>
+<script src="js/audit.js?v=91"></script>
+<script src="js/changelog.js?v=91"></script>
+<script src="js/app.js?v=91"></script>
 </body>
 </html>
