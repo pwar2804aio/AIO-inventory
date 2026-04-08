@@ -6,7 +6,7 @@ var CHANGELOG = [
   {
     version: 'v92',
     date: '2026-04-08',
-    title: 'Navigation Tidy-up — Records Group',
+    title: "Navigation Tidy-up — Records Group",
     changes: [
       { type: 'improved', text: 'Reports, Serial Lookup and History consolidated under a new "Records" dropdown — nav bar is now significantly cleaner' },
     ],
@@ -14,7 +14,7 @@ var CHANGELOG = [
   {
     version: 'v91',
     date: '2026-04-08',
-    title: 'Navigation Tidy-up — Catalog Group',
+    title: "Navigation Tidy-up — Catalog Group",
     changes: [
       { type: 'improved', text: 'Products and Suppliers consolidated under a new "Catalog" dropdown — keeps the top nav clean' },
     ],
@@ -22,10 +22,10 @@ var CHANGELOG = [
   {
     version: 'v90',
     date: '2026-04-08',
-    title: 'Changelog / What's New Page',
+    title: "Changelog / What's New Page",
     changes: [
-      { type: 'new', text: 'What's New page added to the nav — shows full release history with version, date and colour-coded change badges' },
-      { type: 'new', text: 'changelog.js file introduced — updated with every deployment so users always see current release notes' },
+      { type: 'new', text: "What's New page added to the nav — shows full release history with version, date and colour-coded change badges" },
+      { type: 'new', text: "changelog.js file introduced — updated with every deployment so users always see current release notes" },
     ],
   },
   {
