@@ -1094,7 +1094,7 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const VIEWS = ['dashboard','products','suppliers','orders','transit','shipment-history','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','stocktake','reports','lookup','history'];
+  const VIEWS = ['dashboard','products','suppliers','orders','transit','shipment-history','changelog','in','out','stock-list','deployed','servicing','rma','totalloss','rmatldisp','stocktake','reports','lookup','history'];
 
   function showView(view) {
     VIEWS.forEach(v => { document.getElementById('v-' + v).style.display = v === view ? '' : 'none'; });
@@ -1121,6 +1121,7 @@
     if (view === 'stocktake')  Audit.init();
     if (view === 'history')    { UI.populateCategoryFilters(); UI.renderHistory(); }
     if (view === 'shipment-history') UI.renderShipmentHistory();
+    if (view === 'changelog')        UI.renderChangelog();
     if (view === 'in')         { UI.populateDataLists(); if (!inRows.length) inRows=[newInRow()]; renderInRows(); }
     if (view === 'out')        { UI.populateDataLists(); if (!outRows.length) outRows=[newOutRow()]; renderOutRows(); _wireOutModeToggle(); }
     if (view === 'lookup')     setTimeout(() => document.getElementById('lookup-input').focus(), 50);
