@@ -1,0 +1,126 @@
+/**
+ * changelog.js — AIO Inventory · Release Notes
+ * Updated with every deployment.
+ */
+const CHANGELOG = [
+  {
+    version: 'v89',
+    date: '2026-04-08',
+    title: 'Shipment History & Document Uploads',
+    changes: [
+      { type: 'new',  text: 'Shipment History tab added under Orders — shows all received shipments with full product breakdown and landed costs' },
+      { type: 'new',  text: 'Document uploads — attach PDFs, images and documents to active and received shipments via Firebase Storage' },
+      { type: 'new',  text: 'Delete button on Shipment History cards — removes the record without affecting received stock' },
+      { type: 'improved', text: 'Purchase Orders tab now shows only pending and cancelled orders — in-transit and received orders move to their own views' },
+      { type: 'improved', text: 'Receiving a shipment now automatically marks the linked purchase order as received' },
+      { type: 'improved', text: 'Order flow clarified: Purchase Orders → In Transit → Shipment History' },
+    ],
+  },
+  {
+    version: 'v88',
+    date: '2026-04-07',
+    title: 'Audit & Stock Count Improvements',
+    changes: [
+      { type: 'new',  text: 'Audit system supports NS- (no-serial) items throughout the count and variance flow' },
+      { type: 'new',  text: 'Missing serials at count time are written off as lost stock via isLost OUT movements' },
+      { type: 'new',  text: 'Audit CSV export added to variance report' },
+      { type: 'improved', text: 'Deployed stock explicitly excluded from stock counts — deployed items are at customer sites' },
+      { type: 'improved', text: 'Paused audits persisted per user so count progress is not lost on refresh' },
+    ],
+  },
+  {
+    version: 'v80',
+    date: '2026-03-28',
+    title: 'Purchase Orders & Freight Cost Splitting',
+    changes: [
+      { type: 'new',  text: 'Purchase Orders tab — place orders with supplier, products, quantities and unit costs' },
+      { type: 'new',  text: 'Freight cost splitting — freight is distributed proportionally across product lines by value, updating landed cost per unit' },
+      { type: 'new',  text: 'Price locking — unit costs are locked at order time and carried through to stock receipt' },
+      { type: 'new',  text: 'Arrange Shipment workflow — converts a purchase order into an In Transit shipment' },
+      { type: 'new',  text: 'Tax support on orders — GST/VAT amount, rate and reference stored and shown in order breakdown' },
+    ],
+  },
+  {
+    version: 'v70',
+    date: '2026-03-15',
+    title: 'Workshop, Servicing & RMA',
+    changes: [
+      { type: 'new',  text: 'Servicing view — stat cards and per-product breakdown with cost column for items under repair' },
+      { type: 'new',  text: 'Servicing outcomes: Working / Fail-RMA / Fail-Total Loss' },
+      { type: 'new',  text: 'RMA and Total Loss views with dispatch tracking' },
+      { type: 'new',  text: 'Workshop navigation group consolidating Servicing, RMA and Total Loss' },
+      { type: 'improved', text: 'Recall to servicing from Stock Holding with reason capture' },
+    ],
+  },
+  {
+    version: 'v60',
+    date: '2026-03-05',
+    title: 'Stock Holding Conditions & SmartSelect',
+    changes: [
+      { type: 'new',  text: 'Stock Holding dashboard — per-product breakdown by condition: ✅ Working / 🔬 Testing / ⚠ Faulty / ⛔ RMA / 🗑 TL' },
+      { type: 'new',  text: 'Working condition explicitly excludes items with any condition flag' },
+      { type: 'new',  text: 'SmartSelect applied to supplier and location fields across Stock In, In Transit and modals' },
+      { type: 'new',  text: 'Condition pills on serial detail view with one-click updates' },
+      { type: 'improved', text: 'Batch IN condition bleed bug fixed — conditions are now tracked per-serial' },
+    ],
+  },
+  {
+    version: 'v50',
+    date: '2026-02-20',
+    title: 'Suppliers, Products & Navigation Groups',
+    changes: [
+      { type: 'new',  text: 'Suppliers tab — manage supplier records with contact info, notes and order history auto-population' },
+      { type: 'new',  text: 'Products tab — dynamic product management with categories and default thresholds' },
+      { type: 'new',  text: 'Grouped navigation dropdowns: Stock Movements, Stock Info, Workshop, Orders' },
+      { type: 'new',  text: 'No-serial product support — NS- prefix items handled throughout all views' },
+      { type: 'improved', text: 'Product dropdown repopulates correctly after adding new products' },
+    ],
+  },
+  {
+    version: 'v40',
+    date: '2026-02-05',
+    title: 'Stock Deployed & Pending Deployments',
+    changes: [
+      { type: 'new',  text: 'Stock Deployed view — track units at customer sites with customer, location and cost' },
+      { type: 'new',  text: 'Pending deployments — stage a deployment for review before confirming' },
+      { type: 'new',  text: 'Confirm / cancel pending deployment workflow' },
+      { type: 'new',  text: 'Deployed stock excluded from Stock Holding counts automatically' },
+    ],
+  },
+  {
+    version: 'v30',
+    date: '2026-01-20',
+    title: 'In Transit & Multi-user Auth',
+    changes: [
+      { type: 'new',  text: 'In Transit tab — register incoming shipments before stock arrives' },
+      { type: 'new',  text: 'Receive shipment modal — confirm location and receiver on arrival' },
+      { type: 'new',  text: 'Firebase Authentication — role-based access (admin / staff)' },
+      { type: 'new',  text: 'Real-time sync via Firestore onSnapshot — all users see live updates' },
+      { type: 'new',  text: 'User management — admin can create and manage user accounts' },
+    ],
+  },
+  {
+    version: 'v20',
+    date: '2026-01-08',
+    title: 'Stock In / Out & Movement History',
+    changes: [
+      { type: 'new',  text: 'Stock In — receive items into stock with supplier, location, PO number and serial numbers' },
+      { type: 'new',  text: 'Stock Out — remove items from stock with reason and destination' },
+      { type: 'new',  text: 'Movement History — full searchable log of all IN/OUT movements with filters' },
+      { type: 'new',  text: 'Serial number lookup — find any serial and see its full movement history' },
+      { type: 'new',  text: 'Low stock alerts on dashboard based on per-product thresholds' },
+    ],
+  },
+  {
+    version: 'v10',
+    date: '2025-12-20',
+    title: 'Initial Release',
+    changes: [
+      { type: 'new',  text: 'AIO Inventory system launched — cloud-based inventory management on GitHub Pages + Firebase' },
+      { type: 'new',  text: 'Dashboard with stock summary stats and per-product breakdown' },
+      { type: 'new',  text: 'Stock Holding table with product, category, location and quantity' },
+      { type: 'new',  text: 'Dark mode support' },
+      { type: 'new',  text: 'Firebase Firestore backend — data persists and syncs across sessions' },
+    ],
+  },
+];
