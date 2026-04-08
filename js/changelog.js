@@ -2,7 +2,7 @@
  * changelog.js — AIO Inventory · Release Notes
  * Updated with every deployment.
  */
-const CHANGELOG = [
+var CHANGELOG = [
   {
     version: 'v92',
     date: '2026-04-08',
