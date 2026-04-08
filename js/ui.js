@@ -2188,7 +2188,11 @@ Items will remain in Stock Holding with no customer attached.`)) return;
   // ── Changelog ─────────────────────────────────────────────────────────
   function renderChangelog() {
     const container = document.getElementById('changelog-body');
-    if (!container || typeof CHANGELOG === 'undefined') return;
+    if (!container) return;
+    if (typeof CHANGELOG === 'undefined' || !CHANGELOG.length) {
+      container.innerHTML = '<div class="empty">Release notes unavailable — try refreshing the page.</div>';
+      return;
+    }
 
     const typeLabel = { new: 'New', improved: 'Improved', fixed: 'Fixed' };
     const typeClass = { new: 'cl-new', improved: 'cl-improved', fixed: 'cl-fixed' };
