@@ -4,6 +4,14 @@
  */
 const CHANGELOG = [
   {
+    version: 'v92',
+    date: '2026-04-08',
+    title: 'Navigation Tidy-up — Records Group',
+    changes: [
+      { type: 'improved', text: 'Reports, Serial Lookup and History consolidated under a new "Records" dropdown — nav bar is now significantly cleaner' },
+    ],
+  },
+  {
     version: 'v91',
     date: '2026-04-08',
     title: 'Navigation Tidy-up — Catalog Group',
