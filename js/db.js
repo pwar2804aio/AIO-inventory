@@ -241,8 +241,57 @@ const DB = (() => {
     if (idx > -1) { _data.pendingDeployments[idx] = { ..._data.pendingDeployments[idx], ...changes }; _save(); }
   }
 
+
+  // ── Document Uploads (Firebase Storage) ─────────────────────────────
+  let _storage = null;
+  async function _getStorage() {
+    if (_storage) return _storage;
+    const { getStorage } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+    const { getApps } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    _storage = getStorage(getApps()[0]);
+    return _storage;
+  }
+
+  async function uploadDocument(entityType, entityId, file) {
+    const { ref, uploadBytes, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+    const storage = await _getStorage();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `documents/${entityType}-${entityId}/${Date.now()}_${safeName}`;
+    const storageRef = ref(storage, path);
+    const snap = await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(snap.ref);
+    return { name: file.name, url, size: file.size, path, uploadedAt: new Date().toISOString() };
+  }
+
+  function addDocumentToShipment(id, docMeta) {
+    const i = _data.shipments.findIndex(s => s.id === id);
+    if (i > -1) {
+      if (!_data.shipments[i].documents) _data.shipments[i].documents = [];
+      _data.shipments[i].documents.push(docMeta);
+      _save();
+    }
+  }
+
+  function removeDocumentFromShipment(shipmentId, docPath) {
+    const i = _data.shipments.findIndex(s => s.id === shipmentId);
+    if (i > -1) {
+      _data.shipments[i].documents = (_data.shipments[i].documents || []).filter(d => d.path !== docPath);
+      _save();
+    }
+  }
+
+  function addDocumentToOrder(id, docMeta) {
+    if (!_data.orders) return;
+    const i = _data.orders.findIndex(o => o.id === id);
+    if (i > -1) {
+      if (!_data.orders[i].documents) _data.orders[i].documents = [];
+      _data.orders[i].documents.push(docMeta);
+      _save();
+    }
+  }
+
   init();
-  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, setPendingUser, getPendingUser, removePendingUser, addPendingDeployment, getPendingDeployments, removePendingDeployment, updatePendingDeployment, savePausedAudit, getPausedAudit, getAllPausedAudits, clearPausedAudit, exportJSON, importJSON };
+  return { onReady, getData, save:_save, addMovement, setThreshold, getThreshold, addShipment, updateShipment, removeShipment, setSerialCost, getSerialCost, setProductCost, deleteSerial, renameSerial, updateSerialCondition, getSerialCondition, savePO, getPO, getAllPOs, getPONumbers, getPOUnitCost, setSerialPO, getSerialPO, addCustomSupplier, addCustomLocation, getCustomSuppliers, getCustomLocations, addOrder, updateOrder, removeOrder, getOrders, addSupplier, updateSupplier, removeSupplier, getSupplierRecords, addProductRecord, updateProductRecord, removeProductRecord, getProductRecords, addAuditRecord, getAuditRecords, setPendingUser, getPendingUser, removePendingUser, addPendingDeployment, getPendingDeployments, removePendingDeployment, updatePendingDeployment, savePausedAudit, getPausedAudit, getAllPausedAudits, clearPausedAudit, exportJSON, importJSON, uploadDocument, addDocumentToShipment, removeDocumentFromShipment, addDocumentToOrder };
 })();
 
 let _currentView = 'dashboard';
@@ -254,5 +303,6 @@ function _refreshView() {
     else if (_currentView==='history')    UI.renderHistory();
     else if (_currentView==='transit')    UI.renderTransitList();
     else if (_currentView==='orders')     UI.renderOrderList();
+    else if (_currentView==='shipment-history') UI.renderShipmentHistory();
   } catch(e) {}
 }
