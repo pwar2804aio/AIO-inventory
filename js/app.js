@@ -749,6 +749,8 @@
       return false;
     }
 
+    const rowExcluded = {};  // tracks which product rows are excluded from this shipment
+
     function _buildProductRows() {
       return remainingProducts.map((p, i) => {
         const serials = rowSerials[i] || [];
@@ -757,16 +759,18 @@
           '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;font-family:var(--mono);">' +
           esc(s) + '<button class="split-serial-x" data-rowidx="' + i + '" data-serial="' + esc(s) + '" style="background:none;border:none;cursor:pointer;color:var(--text-hint);font-size:13px;line-height:1;padding:0 2px;">×</button></span>'
         ).join('');
-        return '<div class="product-row-card" style="margin-bottom:10px;">' +
-          '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">' +
+        return '<div class="product-row-card" id="split-row-' + i + '" style="margin-bottom:10px;transition:opacity .2s;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
             '<div><span style="font-weight:600;font-size:13px;">' + esc(p.product) + '</span>' +
-            '<span class="cat-badge" style="margin-left:8px;">' + esc(p.category||'') + '</span></div>' +
-            '<div style="font-size:12px;color:var(--text-muted);">' + p.remaining + ' remaining (of ' + p.qty + ' ordered)</div>' +
+            '<span class="cat-badge" style="margin-left:8px;">' + esc(p.category||'') + '</span>' +
+            '<span style="font-size:11px;color:var(--text-muted);margin-left:10px;">' + p.remaining + ' remaining</span></div>' +
+            '<button class="btn btn-ghost btn-xs split-toggle-btn" data-rowidx="' + i + '" style="font-size:11px;">✕ Not in this shipment</button>' +
           '</div>' +
+          '<div id="split-body-' + i + '">' +
           '<div class="form-grid g2" style="margin-bottom:10px;">' +
-            '<div class="form-group"><label class="form-label">Units in this shipment *</label>' +
-            '<input class="fi" type="number" id="split-qty-' + i + '" min="0" max="' + p.remaining + '" value="' + p.remaining + '" />' +
-            '<div class="hint">Max: ' + p.remaining + ' · Set to 0 to exclude from this shipment</div></div>' +
+            '<div class="form-group"><label class="form-label">Units in this shipment</label>' +
+            '<input class="fi" type="number" id="split-qty-' + i + '" min="1" max="' + p.remaining + '" value="' + p.remaining + '" />' +
+            '<div class="hint">Max: ' + p.remaining + '</div></div>' +
           '</div>' +
           (usesNS ? '<div class="hint" style="margin-bottom:4px;">No serial numbers required — placeholder IDs will be generated.</div>' :
             '<div class="form-group">' +
@@ -776,7 +780,9 @@
               '<div id="split-tags-' + i + '" style="display:flex;flex-wrap:wrap;gap:5px;min-height:20px;">' + serialTags + '</div>' +
               '<div class="hint" id="split-count-' + i + '">' + serials.length + ' serial' + (serials.length!==1?'s':'') + ' entered</div>' +
             '</div>'
-          ) + '</div>';
+          ) +
+          '</div>' +
+        '</div>';
       }).join('');
     }
 
@@ -855,7 +861,21 @@
       if (typeof Scanner !== 'undefined') Scanner.attachToInput(serialField, addSerial);
     });
 
+    // Wire include/exclude toggle buttons
     overlay.querySelector('#split-product-rows').addEventListener('click', e => {
+      const toggleBtn = e.target.closest('.split-toggle-btn');
+      if (toggleBtn) {
+        const idx = parseInt(toggleBtn.dataset.rowidx);
+        const row  = overlay.querySelector('#split-row-' + idx);
+        const body = overlay.querySelector('#split-body-' + idx);
+        rowExcluded[idx] = !rowExcluded[idx];
+        row.style.opacity        = rowExcluded[idx] ? '0.35' : '1';
+        body.style.pointerEvents = rowExcluded[idx] ? 'none' : '';
+        body.style.userSelect    = rowExcluded[idx] ? 'none' : '';
+        toggleBtn.textContent    = rowExcluded[idx] ? '✓ Include in shipment' : '✕ Not in this shipment';
+        toggleBtn.style.color    = rowExcluded[idx] ? 'var(--aio-purple)' : '';
+        return;
+      }
       if (e.target.classList.contains('split-serial-x')) {
         const idx = parseInt(e.target.dataset.rowidx);
         const serial = e.target.dataset.serial;
@@ -880,15 +900,15 @@
       const ts = Date.now();
       let totalUnitsInShipment = 0;
       const shipmentProducts = [];
-      let allZero = remainingProducts.every((p, i) => (parseInt(document.getElementById('split-qty-' + i)?.value) || 0) === 0);
-      if (allZero) { errEl.textContent = 'Set at least one product quantity above 0.'; errEl.style.display = 'block'; return; }
+      const anyIncluded = remainingProducts.some((p, i) => !rowExcluded[i] && (parseInt(overlay.querySelector('#split-qty-' + i)?.value) || 0) > 0);
+      if (!anyIncluded) { errEl.textContent = 'Include at least one product in this shipment.'; errEl.style.display = 'block'; return; }
       for (let i = 0; i < remainingProducts.length; i++) {
         const p = remainingProducts[i];
         const qtyEl = overlay.querySelector('#split-qty-' + i);
         const qty = parseInt(qtyEl?.value) || 0;
         if (qty < 1) { errEl.textContent = 'Enter a quantity >= 1 for "' + p.product + '".'; errEl.style.display = 'block'; return; }
         if (qty > p.remaining) { errEl.textContent = 'Quantity for "' + p.product + '" exceeds remaining (' + p.remaining + ').'; errEl.style.display = 'block'; return; }
-        if (qty === 0) continue; // excluded from this shipment
+        if (rowExcluded[i] || qty === 0) continue; // excluded from this shipment
         const usesNS = _usesNS(p);
         let serials;
         if (usesNS || !rowSerials[i] || rowSerials[i].length === 0) {
