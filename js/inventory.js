@@ -520,6 +520,84 @@ const Inventory = (() => {
     }
   }
 
+
+  // ── Partial Receive ───────────────────────────────────────────────────
+  // Receive a subset of units from an in-transit shipment.
+  // parts = [{product, category, serials: string[], qty: number}]
+  //   serials: user-scanned real serials (replaces NS- placeholders)
+  //   qty:     used only when serials is empty (non-serialised items)
+  function receivePartialShipment(shipmentId, parts, receivedBy, actualLocation) {
+    const { shipments } = DB.getData();
+    const shipment = shipments.find(s => s.id === shipmentId);
+    if (!shipment) throw new Error('Shipment not found.');
+    const location = actualLocation || shipment.location;
+    if (!location) throw new Error('Location is required to receive stock.');
+
+    const poNumber = shipment.poNumber || '';
+    const now = Date.now();
+
+    for (const part of parts) {
+      const shipProd = shipment.products.find(p => p.product === part.product);
+      if (!shipProd || !shipProd.serials.length) continue;
+
+      let serialsToReceive;
+      if (part.serials && part.serials.length > 0) {
+        // User scanned real serials — splice equivalent NS- placeholders out
+        const qty = part.serials.length;
+        if (qty > shipProd.serials.length) throw new Error(`Cannot receive ${qty} of ${part.product} — only ${shipProd.serials.length} in transit.`);
+        shipProd.serials.splice(0, qty);
+        serialsToReceive = part.serials;
+      } else {
+        // Non-serialised: pop NS- placeholders from shipment
+        const qty = Math.min(part.qty, shipProd.serials.length);
+        if (!qty) continue;
+        serialsToReceive = shipProd.serials.splice(0, qty);
+      }
+      if (!serialsToReceive.length) continue;
+
+      let unitCost = shipProd.landedPerUnit != null ? shipProd.landedPerUnit
+                   : shipProd.unitCost     != null ? shipProd.unitCost : null;
+      if (poNumber && unitCost == null) {
+        const poCost = DB.getPOUnitCost(poNumber, part.product);
+        if (poCost != null) unitCost = poCost;
+      }
+      if (poNumber) serialsToReceive.forEach(s => DB.setSerialPO(s, poNumber));
+      if (unitCost != null) serialsToReceive.forEach(s => DB.setSerialCost(s, unitCost));
+
+      DB.addMovement({
+        id: now + Math.random(),
+        type: 'IN',
+        product:    part.product,
+        category:   part.category || shipProd.category,
+        location,
+        supplier:   shipment.supplier || '',
+        receivedBy: receivedBy || '',
+        poNumber,
+        serials:    [...serialsToReceive],
+        date:       new Date().toISOString(),
+        fromShipment: shipmentId,
+      });
+    }
+
+    // Mark shipment received if all units have been collected
+    const allReceived = shipment.products.every(p => p.serials.length === 0);
+    if (allReceived) {
+      DB.updateShipment(shipmentId, {
+        status: 'received',
+        receivedAt: new Date().toISOString(),
+        receivedBy: receivedBy || '',
+        actualLocation: location,
+      });
+    }
+
+    // Recalculate order status
+    if (shipment.orderId) {
+      const orderShipments = DB.getData().shipments.filter(s => s.orderId === shipment.orderId);
+      const allDone   = orderShipments.every(s => s.status === 'received');
+      if (allDone) DB.updateOrder(shipment.orderId, { status: 'received', receivedAt: new Date().toISOString() });
+    }
+  }
+
   // ── Stock Out ─────────────────────────────────────────────────────────
   // Returns the known product for a serial based on its first IN movement
   function getSerialKnownProduct(serial) {
@@ -787,7 +865,7 @@ const Inventory = (() => {
   }
 
     DB.onReady(() => refreshProducts());
-    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, getSerialKnownProduct, stockIn, createShipment, receiveShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
+    return { getInventoryMap, getStockByProduct, getDeployedByProduct, getAllSerialRows, getDeployedSerialRows, getRmaTlDispatchedRows, getTotalLossRows, getAvailableSerials, getLowStockItems, getSerialInfo, getSerialKnownProduct, stockIn, createShipment, receiveShipment, receivePartialShipment, stockOut, stockOutByProduct, stagePendingDeployment, confirmDeployment, getPendingDeploymentSerials, getLocations, getSuppliers, getProducts, getCustomers, getStats, recallToServicing, createOrder, refreshProducts, CATEGORIES, PRODUCTS };
 
   function createOrder(opts) {
     const { supplier, poNumber, expectedBy, products, taxRate, taxAmount, taxRef } = opts;
@@ -857,3 +935,4 @@ const Inventory = (() => {
     return order;
   }
 })();
+
