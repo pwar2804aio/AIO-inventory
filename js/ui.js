@@ -435,17 +435,17 @@ const UI = (() => {
   function renderOrderList() {
     const allOrders = DB.getOrders().slice().reverse();
     // Purchase Orders tab: show only pending and cancelled (in-transit/received move to their own views)
-    const orders = allOrders.filter(o => o.status === 'pending' || o.status === 'cancelled');
+    const orders = allOrders.filter(o => o.status === 'pending' || o.status === 'partial' || o.status === 'cancelled');
     const badge  = document.getElementById('order-count-badge');
-    const pending = allOrders.filter(o => o.status === 'pending').length;
+    const pending = allOrders.filter(o => o.status === 'pending' || o.status === 'partial').length;
     if (badge) badge.textContent = pending > 0 ? `(${pending})` : '';
 
     const container = document.getElementById('order-list');
     if (!container) return;
     if (!orders.length) { container.innerHTML = '<div class="empty">No orders placed yet</div>'; return; }
 
-    const statusLabel = { pending: '⏳ Pending', 'in-transit': '✈ In Transit', received: '✓ Received', cancelled: '✗ Cancelled' };
-    const statusClass = { pending: 'b-low', 'in-transit': 'transit', received: 'b-in', cancelled: 'b-zero' };
+    const statusLabel = { pending: '⏳ Pending', partial: '⚡ Partial', 'in-transit': '✈ In Transit', received: '✓ Received', cancelled: '✗ Cancelled' };
+    const statusClass = { pending: 'b-low', partial: 'b-partial', 'in-transit': 'transit', received: 'b-in', cancelled: 'b-zero' };
 
     container.innerHTML = orders.map(o => {
       const totalQty = o.products.reduce((a, p) => a + p.qty, 0);
@@ -505,6 +505,10 @@ const UI = (() => {
           </div>
           <div class="shipment-actions" style="align-self:flex-start;">
             ${o.status === 'pending' ? `<button class="btn btn-success btn-xs" data-arrange-order="${o.id}">Arrange Shipment</button>
+            <button class="btn btn-orange btn-xs" data-split-order="${o.id}" title="Register a partial shipment &#8212; specify how many units are being sent now">&#9986; Split Shipment</button>
+            <button class="btn btn-ghost btn-xs" data-cancel-order="${o.id}">Cancel</button>` : ''}
+            ${o.status === 'partial' ? `<button class="btn btn-success btn-xs" data-arrange-order="${o.id}">Arrange Remaining</button>
+            <button class="btn btn-orange btn-xs" data-split-order="${o.id}" title="Register another partial shipment for remaining units">&#9986; Split Again</button>
             <button class="btn btn-ghost btn-xs" data-cancel-order="${o.id}">Cancel</button>` : ''}
             ${o.status === 'in-transit' ? `<span style="font-size:11px;color:var(--text-muted);">Shipment registered</span>` : ''}
           </div>
@@ -529,6 +533,11 @@ const UI = (() => {
     container.querySelectorAll('[data-arrange-order]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (typeof window.arrangeShipmentFromOrder === 'function') window.arrangeShipmentFromOrder(parseInt(btn.dataset.arrangeOrder));
+      });
+    });
+    container.querySelectorAll('[data-split-order]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof window.splitShipmentFromOrder === 'function') window.splitShipmentFromOrder(parseInt(btn.dataset.splitOrder));
       });
     });
     container.querySelectorAll('[data-cancel-order]').forEach(btn => {
