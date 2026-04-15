@@ -517,6 +517,10 @@ const Inventory = (() => {
     // Also mark the linked purchase order as received
     if (shipment.orderId) {
       DB.updateOrder(shipment.orderId, { status: 'received', receivedAt: new Date().toISOString() });
+    } else if (shipment.poNumber) {
+      // Fallback: find order by PO number
+      const linkedOrder = (DB.getOrders() || []).find(o => o.poNumber === shipment.poNumber);
+      if (linkedOrder) DB.updateOrder(linkedOrder.id, { status: 'received', receivedAt: new Date().toISOString() });
     }
   }
 
