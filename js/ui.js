@@ -637,20 +637,49 @@ const UI = (() => {
     const s = shipments.find(x => x.id === shipmentId);
     if (!s) return;
 
+    const totalUnits = s.products.reduce((a,p) => a + p.serials.length, 0);
+    // Determine which products need real serial numbers (have NS- placeholders)
+    const needsSerials = s.products.map(p => p.serials.some(x => x.startsWith('NS-')));
+    const anyNeedsSerials = needsSerials.some(Boolean);
+
+    // Scanned serials per product index
+    const scanned = {};
+    s.products.forEach((p, i) => { scanned[i] = new Set(); });
+
+    function serialSection() {
+      if (!anyNeedsSerials) return '';
+      return s.products.map((p, i) => {
+        if (!needsSerials[i]) return '';
+        const qty = p.serials.length;
+        return `<div style="margin-bottom:12px;padding:12px;background:var(--bg-hover,rgba(0,0,0,.03));border-radius:8px;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:13px;">${esc(p.product)}</strong>
+            <span style="font-size:11px;color:var(--text-muted);">${qty} unit${qty!==1?'s':''} · <span id="rcv-count-${i}" style="color:var(--aio-purple);font-weight:600;">0</span> scanned</span>
+          </div>
+          <input class="fi fi-mono" id="rcv-serial-${i}" placeholder="Scan or type serial then Enter · paste to bulk import" style="margin-bottom:6px;" />
+          <div id="rcv-tags-${i}" style="display:flex;flex-wrap:wrap;gap:4px;min-height:18px;"></div>
+          <div class="hint" style="margin-top:4px;">Leave blank to use placeholder IDs for non-serialised items</div>
+        </div>`;
+      }).join('');
+    }
+
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
-      <div class="modal-box">
+      <div class="modal-box" style="max-width:520px;">
         <div class="modal-title">Receive shipment</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">${s.products.reduce((a,p)=>a+p.serials.length,0)} units from ${esc(s.supplier||'supplier')}</div>
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Confirm location *</label>
-          <input class="fi" id="modal-loc" value="${esc(s.location||'')}" placeholder="e.g. SF Warehouse" list="modal-loc-list" />
-          <datalist id="modal-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Received by</label>
-          <input class="fi" id="modal-by" placeholder="e.g. Peter Roberts" />
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">${totalUnits} unit${totalUnits!==1?'s':''} from ${esc(s.supplier||'supplier')} · PO ${esc(s.poNumber||'')}</div>
+        ${anyNeedsSerials ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:8px;">Serial Numbers</div>${serialSection()}` : ''}
+        <div class="form-grid g2" style="margin-top:${anyNeedsSerials?'12px':'0'};">
+          <div class="form-group">
+            <label class="form-label">Confirm location *</label>
+            <input class="fi" id="modal-loc" value="${esc(s.location||'')}" placeholder="e.g. SF Warehouse" list="modal-loc-list" />
+            <datalist id="modal-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Received by</label>
+            <input class="fi" id="modal-by" placeholder="e.g. Peter Roberts" />
+          </div>
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
@@ -659,19 +688,67 @@ const UI = (() => {
       </div>`;
     document.body.appendChild(overlay);
 
+    // Wire serial scanners
+    s.products.forEach((p, i) => {
+      if (!needsSerials[i]) return;
+      const inp     = document.getElementById(`rcv-serial-${i}`);
+      const tagsDiv = document.getElementById(`rcv-tags-${i}`);
+      const countEl = document.getElementById(`rcv-count-${i}`);
+      if (!inp) return;
+      function sync() {
+        countEl.textContent = scanned[i].size;
+        tagsDiv.innerHTML = Array.from(scanned[i]).map(sv =>
+          `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-family:monospace;cursor:pointer;" data-rm="${sv}">${esc(sv)}</span>`
+        ).join('');
+        tagsDiv.querySelectorAll('[data-rm]').forEach(t =>
+          t.addEventListener('click', () => { scanned[i].delete(t.dataset.rm); sync(); })
+        );
+      }
+      function add(raw) { const v = raw.trim().toUpperCase(); if (v) scanned[i].add(v); }
+      inp.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        inp.value.split(/[,\n]+/).map(v => v.trim()).filter(Boolean).forEach(add);
+        inp.value = ''; sync();
+      });
+      inp.addEventListener('paste', () => {
+        setTimeout(() => {
+          inp.value.split(/[\n,\t]+/).map(v => v.trim()).filter(Boolean).forEach(add);
+          inp.value = ''; sync();
+        }, 10);
+      });
+    });
+
     document.getElementById('modal-cancel-btn').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
     document.getElementById('modal-confirm-btn').addEventListener('click', () => {
       const loc = document.getElementById('modal-loc').value.trim();
       const by  = document.getElementById('modal-by').value.trim();
+      if (!loc) { showAlert('Location is required.', 'error'); return; }
       try {
-        Inventory.receiveShipment(shipmentId, by, loc);
+        if (anyNeedsSerials) {
+          // Build parts: use scanned serials where provided, else keep NS- placeholders (qty-based)
+          const parts = s.products.map((p, i) => {
+            const realSerials = Array.from(scanned[i]);
+            if (realSerials.length > 0) {
+              return { product: p.product, category: p.category, serials: realSerials, qty: realSerials.length };
+            } else {
+              // No serials scanned — use all NS- placeholders as-is
+              return { product: p.product, category: p.category, serials: [], qty: p.serials.length };
+            }
+          });
+          Inventory.receivePartialShipment(shipmentId, parts, by, loc);
+        } else {
+          Inventory.receiveShipment(shipmentId, by, loc);
+        }
         overlay.remove();
         renderTransitList();
+        renderOrderList();
         renderDashboard();
         showAlert(`Shipment received into stock at ${loc}`, 'success');
       } catch (err) { showAlert(err.message, 'error'); }
     });
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
 
 
