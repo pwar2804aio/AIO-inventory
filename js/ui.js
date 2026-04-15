@@ -434,8 +434,8 @@ const UI = (() => {
   // ── Orders ─────────────────────────────────────────────────────────────
   function renderOrderList() {
     const allOrders = DB.getOrders().slice().reverse();
-    // Purchase Orders tab: show only pending and cancelled (in-transit/received move to their own views)
-    const orders = allOrders.filter(o => o.status === 'pending' || o.status === 'partial' || o.status === 'cancelled');
+    // Purchase Orders tab: show pending, partial, in-transit and cancelled
+    const orders = allOrders.filter(o => o.status === 'pending' || o.status === 'partial' || o.status === 'in-transit' || o.status === 'cancelled');
     const badge  = document.getElementById('order-count-badge');
     const pending = allOrders.filter(o => o.status === 'pending' || o.status === 'partial').length;
     if (badge) badge.textContent = pending > 0 ? `(${pending})` : '';
@@ -510,7 +510,8 @@ const UI = (() => {
             ${o.status === 'partial' ? `<button class="btn btn-success btn-xs" data-arrange-order="${o.id}">Arrange Remaining</button>
             <button class="btn btn-orange btn-xs" data-split-order="${o.id}" title="Register another partial shipment for remaining units">&#9986; Split Again</button>
             <button class="btn btn-ghost btn-xs" data-cancel-order="${o.id}">Cancel</button>` : ''}
-            ${o.status === 'in-transit' ? `<span style="font-size:11px;color:var(--text-muted);">Shipment registered</span>` : ''}
+            ${o.status === 'in-transit' ? `<button class="btn btn-success btn-xs" data-part-receive-order="${o.id}" title="Receive some or all units now, scan serials on arrival">&#9986; Receive Part</button>
+            <button class="btn btn-ghost btn-xs" data-full-receive-order="${o.id}" title="Receive all units from this shipment">Receive All</button>` : ''}
           </div>
         </div>
         ${detailPanel}
@@ -543,6 +544,17 @@ const UI = (() => {
     container.querySelectorAll('[data-cancel-order]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (confirm('Cancel this order?')) { DB.updateOrder(parseInt(btn.dataset.cancelOrder), { status: 'cancelled' }); renderOrderList(); }
+      });
+    });
+    container.querySelectorAll('[data-part-receive-order]').forEach(btn => {
+      btn.addEventListener('click', () => showPartialReceiveModal(parseInt(btn.dataset.partReceiveOrder)));
+    });
+    container.querySelectorAll('[data-full-receive-order]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const orderId = parseInt(btn.dataset.fullReceiveOrder);
+        const { shipments } = DB.getData();
+        const s = shipments.find(x => x.orderId === orderId && x.status === 'in-transit');
+        if (s) showReceiveModal(s.id);
       });
     });
   }
@@ -660,6 +672,154 @@ const UI = (() => {
       } catch (err) { showAlert(err.message, 'error'); }
     });
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+
+
+  // ── Partial Receive Modal ────────────────────────────────────────────
+  function showPartialReceiveModal(orderId) {
+    const { shipments } = DB.getData();
+    const order = DB.getOrders().find(o => o.id === orderId);
+    if (!order) return;
+
+    const activeShipments = shipments.filter(s => s.orderId === orderId && s.status === 'in-transit');
+    if (!activeShipments.length) { showAlert('No active in-transit shipments for this order.', 'error'); return; }
+
+    const shipment = activeShipments[0];
+    // scannedSerials[i] = Set of serial strings for product index i
+    const scannedSerials = {};
+    shipment.products.forEach((p, i) => { scannedSerials[i] = new Set(); });
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    function productRows() {
+      return shipment.products.map((p, i) => {
+        const rem  = p.serials.length;
+        const isNS = p.serials.every(s => s.startsWith('NS-'));
+        return `<div style="margin-bottom:12px;padding:12px;background:var(--bg-hover,rgba(0,0,0,.03));border-radius:8px;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="font-size:13px;">${esc(p.product)}</strong>
+            <span style="font-size:11px;color:var(--text-muted);">${rem} unit${rem!==1?'s':''} in transit</span>
+          </div>
+          <div class="form-grid g2">
+            <div class="form-group">
+              <label class="form-label">Units to receive now</label>
+              <input class="fi" type="number" min="0" max="${rem}" value="0" id="pr-qty-${i}" ${isNS ? '' : 'readonly title="Auto-set by serial count"'} />
+            </div>
+            <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end;">
+              ${isNS
+                ? '<span style="font-size:11px;color:var(--text-hint);padding-bottom:4px;">No serial scan required — enter qty above</span>'
+                : `<span style="font-size:12px;color:var(--text-muted);">Serials scanned: <strong id="pr-count-${i}" style="color:var(--aio-purple);">0</strong></span>`
+              }
+            </div>
+          </div>
+          ${!isNS ? `<input class="fi fi-mono" id="pr-serial-${i}" placeholder="Type or scan serial, then Enter · paste list to bulk import" style="margin-top:6px;" />
+          <div id="pr-tags-${i}" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;"></div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    overlay.innerHTML = `
+      <div class="modal-box" style="max-width:540px;">
+        <div class="modal-title">&#9986; Receive Part Shipment</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;">
+          ${esc(shipment.supplier || order.supplier)} &middot; PO ${esc(shipment.poNumber || order.poNumber)}
+          ${activeShipments.length > 1 ? `<span style="margin-left:8px;background:#fff3cd;color:#856404;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:600;">Shipment 1 of ${activeShipments.length}</span>` : ''}
+        </div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-hint);margin-bottom:8px;">Products in transit</div>
+        <div id="pr-products">${productRows()}</div>
+        <div class="form-grid g2" style="margin-top:12px;">
+          <div class="form-group">
+            <label class="form-label">Receiving location *</label>
+            <input class="fi" id="pr-loc" value="${esc(shipment.location || '')}" placeholder="e.g. SF Warehouse" list="pr-loc-list" />
+            <datalist id="pr-loc-list">${Inventory.getLocations().map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Received by</label>
+            <input class="fi" id="pr-by" placeholder="e.g. Peter Roberts" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="pr-cancel">Cancel</button>
+          <button class="btn btn-success" id="pr-confirm">Receive into stock</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    // Wire serial scanners for serialised products
+    shipment.products.forEach((p, i) => {
+      if (p.serials.every(s => s.startsWith('NS-'))) return;
+      const inp      = document.getElementById(`pr-serial-${i}`);
+      const tagsDiv  = document.getElementById(`pr-tags-${i}`);
+      const countBdg = document.getElementById(`pr-count-${i}`);
+      const qtyInp   = document.getElementById(`pr-qty-${i}`);
+      if (!inp) return;
+
+      function sync() {
+        countBdg.textContent = scannedSerials[i].size;
+        qtyInp.value = scannedSerials[i].size;
+        tagsDiv.innerHTML = Array.from(scannedSerials[i]).map(s =>
+          `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-family:monospace;cursor:pointer;" data-rm="${s}">${esc(s)}</span>`
+        ).join('');
+        tagsDiv.querySelectorAll('[data-rm]').forEach(t => {
+          t.addEventListener('click', () => { scannedSerials[i].delete(t.dataset.rm); sync(); });
+        });
+      }
+
+      function addSerial(raw) {
+        const s = raw.trim().toUpperCase();
+        if (s) scannedSerials[i].add(s);
+      }
+
+      inp.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        inp.value.split(/[,
+]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
+        inp.value = '';
+        sync();
+      });
+      inp.addEventListener('paste', () => {
+        setTimeout(() => {
+          inp.value.split(/[
+,	]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
+          inp.value = '';
+          sync();
+        }, 10);
+      });
+    });
+
+    document.getElementById('pr-cancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById('pr-confirm').addEventListener('click', () => {
+      const loc = document.getElementById('pr-loc').value.trim();
+      const by  = document.getElementById('pr-by').value.trim();
+      if (!loc) { showAlert('Location is required.', 'error'); return; }
+
+      const parts = shipment.products.map((p, i) => {
+        const isNS = p.serials.every(s => s.startsWith('NS-'));
+        if (isNS) {
+          const qty = parseInt(document.getElementById(`pr-qty-${i}`).value) || 0;
+          return { product: p.product, category: p.category, serials: [], qty };
+        } else {
+          const serials = Array.from(scannedSerials[i]);
+          return { product: p.product, category: p.category, serials, qty: serials.length };
+        }
+      }).filter(p => p.qty > 0);
+
+      if (!parts.length) { showAlert('Enter at least 1 unit to receive.', 'error'); return; }
+
+      try {
+        Inventory.receivePartialShipment(shipment.id, parts, by, loc);
+        overlay.remove();
+        renderOrderList();
+        renderTransitList();
+        renderDashboard();
+        const total = parts.reduce((a, p) => a + p.qty, 0);
+        showAlert(`${total} unit${total!==1?'s':''} received into stock at ${loc}`, 'success');
+      } catch (err) { showAlert(err.message, 'error'); }
+    });
   }
 
   // ── Shipment History ─────────────────────────────────────────────────
@@ -2196,3 +2356,4 @@ Items will remain in Stock Holding with no customer attached.`)) return;
 
     return { showAlert, hideAlert, renderDashboard, renderProductList, renderSupplierList, renderOrderList, renderTransitList, renderShipmentHistory, renderStockBreakdown, renderStockList, populateStockListFilters, populateCategoryFilters, renderDeployed, populateDeployedFilters, exportDeployedCSV, renderHistory, renderLookup, renderServicing, renderRMA, renderTotalLoss, renderRmaTlDispatched, populateDataLists, exportInventoryCSV, exportHistoryCSV, initSmartSelects, refreshSmartSelects };
 })();
+
