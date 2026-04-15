@@ -4,6 +4,15 @@
  */
 var CHANGELOG = [
   {
+    version: 'v99',
+    date: '2026-04-15',
+    title: 'Part Shipment — Per-Product Include/Exclude Toggle',
+    changes: [
+      { type: 'improved', text: 'Split Shipment modal — each product now has a "✕ Not in this shipment" toggle button; excluded products are greyed out and skipped, no more typing 0 to exclude' },
+      { type: 'improved', text: 'Receive Part modal — same "✕ Not in this delivery" toggle per product, leaving skipped items in transit' },
+    ],
+  },
+  {
     version: 'v98',
     date: '2026-04-15',
     title: 'Part Shipment & Receive — UX Fixes',
