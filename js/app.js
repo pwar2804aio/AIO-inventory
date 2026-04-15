@@ -765,8 +765,8 @@
           '</div>' +
           '<div class="form-grid g2" style="margin-bottom:10px;">' +
             '<div class="form-group"><label class="form-label">Units in this shipment *</label>' +
-            '<input class="fi" type="number" id="split-qty-' + i + '" min="1" max="' + p.remaining + '" value="' + p.remaining + '" />' +
-            '<div class="hint">Max: ' + p.remaining + '</div></div>' +
+            '<input class="fi" type="number" id="split-qty-' + i + '" min="0" max="' + p.remaining + '" value="' + p.remaining + '" />' +
+            '<div class="hint">Max: ' + p.remaining + ' · Set to 0 to exclude from this shipment</div></div>' +
           '</div>' +
           (usesNS ? '<div class="hint" style="margin-bottom:4px;">No serial numbers required — placeholder IDs will be generated.</div>' :
             '<div class="form-group">' +
@@ -880,12 +880,15 @@
       const ts = Date.now();
       let totalUnitsInShipment = 0;
       const shipmentProducts = [];
+      let allZero = remainingProducts.every((p, i) => (parseInt(document.getElementById('split-qty-' + i)?.value) || 0) === 0);
+      if (allZero) { errEl.textContent = 'Set at least one product quantity above 0.'; errEl.style.display = 'block'; return; }
       for (let i = 0; i < remainingProducts.length; i++) {
         const p = remainingProducts[i];
         const qtyEl = overlay.querySelector('#split-qty-' + i);
         const qty = parseInt(qtyEl?.value) || 0;
         if (qty < 1) { errEl.textContent = 'Enter a quantity >= 1 for "' + p.product + '".'; errEl.style.display = 'block'; return; }
         if (qty > p.remaining) { errEl.textContent = 'Quantity for "' + p.product + '" exceeds remaining (' + p.remaining + ').'; errEl.style.display = 'block'; return; }
+        if (qty === 0) continue; // excluded from this shipment
         const usesNS = _usesNS(p);
         let serials;
         if (usesNS || !rowSerials[i] || rowSerials[i].length === 0) {
