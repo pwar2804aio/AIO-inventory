@@ -4,6 +4,17 @@
  */
 var CHANGELOG = [
   {
+    version: 'v98',
+    date: '2026-04-15',
+    title: 'Part Shipment & Receive — UX Fixes',
+    changes: [
+      { type: 'fixed', text: 'Receive Part modal now finds shipment by PO number when orderId link is missing — no more "no active shipments" false negatives' },
+      { type: 'improved', text: 'Receive Part modal — per-product "✕ Not in this delivery" button to exclude items that didn\'t arrive; they stay in transit' },
+      { type: 'improved', text: 'Split Shipment — quantity can now be set to 0 to exclude a product from the current dispatch; only included items register as in transit' },
+      { type: 'fixed', text: 'Order status now correctly updates to received even when shipment was created without orderId link (PO number fallback)' },
+    ],
+  },
+  {
     version: 'v97',
     date: '2026-04-15',
     title: 'Navigation Fix',
