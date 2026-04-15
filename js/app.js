@@ -850,10 +850,8 @@
         const qtyEl = overlay.querySelector('#split-qty-' + i);
         if (qtyEl) qtyEl.value = rowSerials[i].length;
       };
-      serialField.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); serialField.value.split(/[,
-]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerial); serialField.value = ''; } });
-      serialField.addEventListener('paste', e => { e.preventDefault(); (e.clipboardData||window.clipboardData).getData('text').split(/[
-,	]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerial); serialField.value = ''; });
+      serialField.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); serialField.value.split(/[,\n]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerial); serialField.value = ''; } });
+      serialField.addEventListener('paste', e => { e.preventDefault(); (e.clipboardData||window.clipboardData).getData('text').split(/[\n,	]+/).map(v=>v.trim()).filter(Boolean).forEach(addSerial); serialField.value = ''; });
       if (typeof Scanner !== 'undefined') Scanner.attachToInput(serialField, addSerial);
     });
 
