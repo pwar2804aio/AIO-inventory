@@ -266,6 +266,7 @@ html, body { font-family: var(--font); font-size: 14px; background: var(--bg-3);
 .b-out     { background: var(--aio-orange-light);  color: var(--aio-orange-dark); }
 .b-ok      { background: var(--success-bg); color: var(--success-text); }
 .b-low     { background: var(--warning-bg); color: var(--warning-text); }
+.b-partial { background: #fff3e0; color: #e65100; border: 1px solid #ffcc02; }
 .b-zero    { background: var(--danger-bg);  color: var(--danger-text); }
 .b-transit { background: var(--aio-orange-light); color: var(--aio-orange-dark); border: 1px solid var(--aio-orange); }
 .loc-badge { display: inline-block; font-size: 10px; padding: 2px 8px; background: var(--aio-purple-light); color: var(--aio-purple-dark); border-radius: 4px; font-family: var(--mono); border: 1px solid var(--border-md); font-weight: 600; }
