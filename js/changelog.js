@@ -4,6 +4,25 @@
  */
 var CHANGELOG = [
   {
+    version: 'v97',
+    date: '2026-04-15',
+    title: 'Navigation Fix',
+    changes: [
+      { type: 'fixed', text: 'Broken regex in split-shipment scanner caused app.js to fail loading entirely — navigation and all event wiring now works correctly' },
+    ],
+  },
+  {
+    version: 'v96',
+    date: '2026-04-15',
+    title: 'Partial Receive — Split Shipments from Orders',
+    changes: [
+      { type: 'new', text: 'In-transit orders now remain visible in the All Orders panel — no longer disappear after Arrange Shipment' },
+      { type: 'new', text: '✂ Receive Part button on in-transit orders — receive a subset of units from a shipment, scanning real serial numbers on arrival to replace auto-generated placeholders' },
+      { type: 'new', text: 'Receive All button on in-transit orders — quick-receive the full shipment directly from the Orders view without switching to the In Transit tab' },
+      { type: 'improved', text: 'Serial scanner in partial receive modal supports type/scan + Enter and bulk paste, same as other scan flows' },
+    ],
+  },
+  {
     version: 'v92',
     date: '2026-04-08',
     title: "Navigation Tidy-up — Records Group",
