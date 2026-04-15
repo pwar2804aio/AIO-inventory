@@ -4,6 +4,15 @@
  */
 var CHANGELOG = [
   {
+    version: 'v100',
+    date: '2026-04-15',
+    title: 'Receive Shipment — Serial Number Scanning',
+    changes: [
+      { type: 'fixed', text: 'Receive Shipment modal now prompts for real serial numbers when a shipment contains NS- auto-generated placeholders — no more silent placeholder receipt' },
+      { type: 'improved', text: 'Serial scanner per product line on receive: scan/type + Enter, bulk paste supported; leave blank for genuine non-serialised items to keep placeholder IDs' },
+    ],
+  },
+  {
     version: 'v99',
     date: '2026-04-15',
     title: 'Part Shipment — Per-Product Include/Exclude Toggle',
