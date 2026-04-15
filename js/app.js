@@ -16,7 +16,7 @@
     return `
     <div class="product-row-card" id="rowcard-${row.id}">
       <div class="product-row-header">
-        <span class="product-row-num">Product ${idx + 1}</span>
+        <span class="product-row-num">Product ${idx + 1}</span> 
         ${total > 1 ? `<button class="btn-remove-row" data-rowid="${row.id}">×</button>` : ''}
       </div>
       <div class="form-grid g3" style="margin-bottom:10px;">
