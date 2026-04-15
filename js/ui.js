@@ -774,15 +774,13 @@ const UI = (() => {
       inp.addEventListener('keydown', e => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
-        inp.value.split(/[,
-]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
+        inp.value.split(/[,\n]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
         inp.value = '';
         sync();
       });
       inp.addEventListener('paste', () => {
         setTimeout(() => {
-          inp.value.split(/[
-,	]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
+          inp.value.split(/[\n,\t]+/).map(v => v.trim()).filter(Boolean).forEach(addSerial);
           inp.value = '';
           sync();
         }, 10);
