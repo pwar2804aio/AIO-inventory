@@ -4,6 +4,15 @@
  */
 var CHANGELOG = [
   {
+    version: 'v101',
+    date: '2026-04-15',
+    title: 'Order Status Fix — Partial Shipments',
+    changes: [
+      { type: 'fixed', text: 'Order status no longer jumps to "Received" when a partial shipment arrives — it now compares actual received quantities against ordered quantities and stays "Partial" until everything has come in' },
+      { type: 'fixed', text: 'Central Computers order corrected back to Partial — UMR-Industrial (10 units) and U-LTE-Backup Pro remaining (22 units) still outstanding and available to arrange/receive' },
+    ],
+  },
+  {
     version: 'v100',
     date: '2026-04-15',
     title: 'Receive Shipment — Serial Number Scanning',
