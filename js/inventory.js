@@ -481,6 +481,24 @@ const Inventory = (() => {
     return shipment;
   }
 
+
+  // ── Order completion check ────────────────────────────────────────────
+  // Returns 'received' if all ordered quantities have IN movements,
+  // 'partial' if some have arrived, 'pending' if nothing has arrived yet.
+  function _calcOrderStatus(order) {
+    if (!order) return 'partial';
+    const movements = DB.getData().movements;
+    const receivedQty = {};
+    movements.forEach(m => {
+      if (m.type === 'IN' && m.poNumber === order.poNumber) {
+        receivedQty[m.product] = (receivedQty[m.product] || 0) + m.serials.length;
+      }
+    });
+    const allFulfilled = order.products.every(p => (receivedQty[p.product] || 0) >= p.qty);
+    const anyReceived  = order.products.some(p => (receivedQty[p.product] || 0) > 0);
+    return allFulfilled ? 'received' : anyReceived ? 'partial' : 'partial';
+  }
+
   function receiveShipment(id, receivedBy, actualLocation) {
     const { shipments } = DB.getData();
     const shipment = shipments.find(s => s.id === id);
@@ -514,13 +532,16 @@ const Inventory = (() => {
       });
     });
     DB.updateShipment(id, { status: 'received', receivedAt: new Date().toISOString(), receivedBy: receivedBy || '', actualLocation: location });
-    // Also mark the linked purchase order as received
-    if (shipment.orderId) {
-      DB.updateOrder(shipment.orderId, { status: 'received', receivedAt: new Date().toISOString() });
-    } else if (shipment.poNumber) {
-      // Fallback: find order by PO number
-      const linkedOrder = (DB.getOrders() || []).find(o => o.poNumber === shipment.poNumber);
-      if (linkedOrder) DB.updateOrder(linkedOrder.id, { status: 'received', receivedAt: new Date().toISOString() });
+    // Update linked purchase order status based on what has actually been received
+    const _linkedOrder = shipment.orderId
+      ? DB.getOrders().find(o => o.id === shipment.orderId)
+      : DB.getOrders().find(o => o.poNumber === shipment.poNumber);
+    if (_linkedOrder) {
+      const _newStatus = _calcOrderStatus(_linkedOrder);
+      DB.updateOrder(_linkedOrder.id, {
+        status: _newStatus,
+        ...(_newStatus === 'received' ? { receivedAt: new Date().toISOString() } : {})
+      });
     }
   }
 
@@ -594,11 +615,16 @@ const Inventory = (() => {
       });
     }
 
-    // Recalculate order status
-    if (shipment.orderId) {
-      const orderShipments = DB.getData().shipments.filter(s => s.orderId === shipment.orderId);
-      const allDone   = orderShipments.every(s => s.status === 'received');
-      if (allDone) DB.updateOrder(shipment.orderId, { status: 'received', receivedAt: new Date().toISOString() });
+    // Recalculate order status based on actual received quantities vs ordered
+    const _partialLinkedOrder = shipment.orderId
+      ? DB.getOrders().find(o => o.id === shipment.orderId)
+      : DB.getOrders().find(o => o.poNumber === shipment.poNumber);
+    if (_partialLinkedOrder) {
+      const _newStatus = _calcOrderStatus(_partialLinkedOrder);
+      DB.updateOrder(_partialLinkedOrder.id, {
+        status: _newStatus,
+        ...(_newStatus === 'received' ? { receivedAt: new Date().toISOString() } : {})
+      });
     }
   }
 
